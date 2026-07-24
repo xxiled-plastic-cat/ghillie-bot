@@ -35,6 +35,10 @@
     "alpha:dashboard:web:build": "npm --prefix apps/alpha-dashboard run build",
     "alpha:dashboard:web:typecheck": "npm --prefix apps/alpha-dashboard run typecheck",
     "alpha:dashboard": "concurrently \"npm run alpha:dashboard:api\" \"npm run alpha:dashboard:web\"",
+    "amarok:discovery": "tsx src/cli/amarokDiscovery.ts",
+    "amarok:opportunities": "tsx src/cli/amarokOpportunities.ts",
+    "amarok:execution-dry": "tsx src/cli/amarokExecutionDry.ts",
+    "zs:smoke": "tsx src/cli/zsSmoke.ts",
     "alpha:typecheck": "tsc --noEmit",
     "poly:scan": "tsx src/polymarket/polyCommands.ts scan",
     "poly:rewards": "tsx src/polymarket/polyCommands.ts rewards",
@@ -49,7 +53,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts"
+    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -58,13 +62,16 @@
     "@algorandfoundation/algokit-utils": "^9.2.0",
     "@alpha-arcade/sdk": "^0.3.7",
     "@div3rsafi/sdk": "^0.1.0-iGA.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "algosdk": "^3.5.2",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "node-cron": "^4.2.1",
+    "openai": "^6.49.0",
     "postgres": "^3.4.9",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

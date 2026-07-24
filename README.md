@@ -1,8 +1,8 @@
 # nuckelavee
 
-Div3rsaFi / Alpha **user-agent**: walleted scanner, live trading, fills, inventory, settlement, and dashboard.
+Alpha Arcade **user-agent**: walleted trading bot that consumes [Amarok](https://amarok.compx.io) over **remote MCP** for research and unsigned limit-order quotes, then signs and submits locally.
 
-Amarok (research API + unsigned execution quotes + remote MCP) lives in a **separate repo** (`compx-labs/amarok`). This tree does not ship Amarok protocol/MCP source.
+Hard boundary: Amarok never holds keys, never signs payments, and never submits orders (`executionSubmitted: false`). This bot owns x402 USDC micropayments, custody, cancel/claim/merge/split venue ops, fills, inventory, and the live loop.
 
 ## Install
 
@@ -11,159 +11,132 @@ npm install
 cp .env.example .env
 ```
 
-## Commands
+Required for Amarok-backed Alpha:
 
-```bash
-npm run scan
-npm run watch
-npm run tick-exec
-npm run watch-exec
-npm run typecheck
+```env
+AMAROK_MCP_URL=https://amarok-mcp.compx.io/mcp
+MAX_DAILY_X402_BASE_UNITS=5000000
+ALPHA_WALLET_MNEMONIC="word1 ... word25"
+ALPHA_ENABLE_LIVE_TRADING=true
+ALPHA_CONFIRM_RISK=true
+DATABASE_URL=
 ```
 
-Alpha module:
+`ALPHA_API_KEY` is still used for Alpha SDK **venue ops** Amarok does not expose yet (wallet open-order sync). Research and limit placement go through Amarok MCP with per-call x402 payments from the agent wallet.
+
+## ZeroSignal (zs-proxy)
+
+LLM calls go **only** through host-local [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback.
+
+```bash
+# macOS: brew install txnlab/tap/zs-proxy
+printf '%s\n' "$ALPHA_WALLET_MNEMONIC" | zs-proxy wallet import --stdin --yes --force
+zs-proxy fund --wait
+zs-proxy proxy start --config config/zs-proxy.yaml
+```
+
+```env
+OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+OPEN_AI_API_KEY=zerosignal
+OPENAI_MODEL=glm-5.2
+OPENAI_REASONING_EFFORT=medium
+AI_MODE=full
+```
+
+`OPEN_AI_API_KEY` is a placeholder; admission is the on-chain wallet seal. Proxy defaults (`zs.privacy: false`, spend caps) live in [`config/zs-proxy.yaml`](./config/zs-proxy.yaml). Multi-turn agents always set `store: false` and replay conversation client-side (never `previous_response_id`).
+
+Smoke (spends ZeroSignal + one Amarok x402 research call):
+
+```bash
+npm run zs:smoke
+```
+
+### Expected spend
+
+| Channel | What you pay |
+| --- | --- |
+| **Amarok x402** | Mainnet USDC per paid MCP tool (`MAX_DAILY_X402_BASE_UNITS`) |
+| **ZeroSignal** | Pay-per-message via zs-proxy (`daily_cap_usdc` / `per_request_cap_usdc`) |
+| **ALGO fees** | Network fees for x402 payment txns + zs-proxy prepaid ticket / MBR pool |
+
+## Amarok MCP smoke
+
+```bash
+npm run amarok:discovery          # free health / discovery / shapes
+npm run amarok:opportunities      # paid list (spends USDC)
+npm run amarok:execution-dry -- --market <marketAppId>
+npm run amarok:execution-dry -- --market <marketAppId> --submit
+```
+
+## Alpha commands
 
 ```bash
 npm run alpha:scan
 npm run alpha:rewards
+npm run alpha:market -- <slug-or-app-id>
 npm run alpha:paper
 npm run alpha:paper-report
 npm run alpha:live-dry-run
 npm run alpha:live
+npm run typecheck
+npm test
 ```
 
-Polymarket module:
+### Dashboard (read-only)
 
 ```bash
-npm run poly:scan
-npm run poly:rewards
-npm run poly:paper
-npm run poly:paper-report
-npm run poly:cron
-```
-
-Alpha dashboard (read-only):
-
-```bash
-# Install frontend deps once
 npm --prefix apps/alpha-dashboard install
-
-# Run API + dashboard together
 npm run alpha:dashboard
-
-# Or run independently
-npm run alpha:dashboard:api
-npm run alpha:dashboard:web
 ```
-
-Dashboard defaults:
 
 - API: `http://127.0.0.1:8787`
 - Web UI: `http://127.0.0.1:5174`
-- Optional env:
-  - `ALPHA_DASHBOARD_PORT` (API port)
-  - `ALPHA_DASHBOARD_HOST` (API bind host)
-  - `ALPHA_DASHBOARD_WEB_PORT` (Vite dev port)
-  - `ALPHA_DASHBOARD_CACHE_MS` (API cache TTL, default 5000)
 
-Available endpoints:
-
-- `GET /api/alpha/dashboard?wallet=<optional_wallet_address>`
-- `GET /api/alpha/overview?wallet=<optional_wallet_address>`
-- `GET /api/alpha/positions?wallet=<optional_wallet_address>`
-- `GET /api/alpha/orders?wallet=<optional_wallet_address>`
-
-Cron runner:
+### Cron
 
 ```bash
-# Uses ALPHA_CRON_SCHEDULE and ALPHA_CRON_COMMAND from env.
-# Defaults to live trading.
 npm run alpha:cron
-
-# Common presets
-npm run alpha:cron:paper
-npm run alpha:cron:live-dry-run
 npm run alpha:cron:live
 npm run alpha:cron:live:once
-
-# One-shot execution for smoke tests
-npm run alpha:cron -- --once
 ```
 
-Optional filter:
-
-```bash
-npm run scan -- --underlying BTC
-npm run watch -- --underlying ETH
-npm run tick-exec -- --underlying BTC
-```
-
-The scan output now includes:
-
-- `MAKER CANDIDATE`: markets with existing two-sided liquidity worth improving.
-- `LIQUIDITY SIGNAL`: concrete quote-opening ideas, including thin-book seed opportunities, with suggested YES/NO quote levels and an explanation of why.
-
-## Execution Modes
-
-`tick-exec` runs one target-selection/requote cycle. `watch-exec` runs the same cycle every `TICK_INTERVAL_MS` (default 60 seconds).
-
-State is persisted to a JSON file in the repo by default:
-
-```env
-BOT_STATE_PATH=state/bot-state.json
-```
-
-This keeps state tracked in the main project as requested. Runtime logs/temp files remain under `.nuckelavee/` and are ignored.
-
-Execution defaults to paper mode:
-
-```env
-EXECUTION_MODE=paper
-ENABLE_LIVE_TRADING=false
-```
-
-Live mode requires both:
-
-```env
-EXECUTION_MODE=live
-ENABLE_LIVE_TRADING=true
-PAYER_MNEMONIC="word1 word2 ... word25"
-```
-
-Use a dedicated hot bot wallet only. The mnemonic is never logged; only the public address is derived for signing and matching own orders. The executor follows the official SDK example pattern: `algosdk.mnemonicToSecretKey`, `getNextOrderId`, `buildPlaceOrderTxns`, `buildCancelOrderTxn`, `sendRawTransaction`, and `waitForConfirmation`.
-
-For DigitalOcean App Platform worker deployment, configure the worker command in the dashboard as:
+For DigitalOcean App Platform:
 
 ```bash
 npm run alpha:cron:live
 ```
 
-Set these runtime env vars in App Platform:
+Typical App Platform env:
 
 ```env
 DATABASE_URL=
-DATABASE_POOL_MAX=1
-DATABASE_CLOSE_TIMEOUT_SECONDS=1
-ALPHA_API_KEY=
-PAYER_MNEMONIC=
+AMAROK_MCP_URL=https://amarok-mcp.compx.io/mcp
+MAX_DAILY_X402_BASE_UNITS=5000000
+ALPHA_WALLET_MNEMONIC=
 ALPHA_ENABLE_LIVE_TRADING=true
 ALPHA_CONFIRM_RISK=true
 ALPHA_CRON_SCHEDULE=*/2 * * * *
 ALPHA_CRON_COMMAND=npm run alpha:live
-ALPHA_MARKET_STATUS_PERSISTENCE=false
-ALPHA_ORDERBOOK_FETCH_CONCURRENCY=12
-ALPHA_MAX_MARKETS_PER_SCAN=0
-DEBUG_MODE=false
-ALPHA_MAX_ORDER_SIZE_USD=30
-ALPHA_MAX_MARKET_EXPOSURE_USD=40
-ALPHA_MAX_TOTAL_EXPOSURE_USD=220
-ALPHA_MAX_LIVE_OPEN_ORDERS=12
-ALPHA_REWARD_TARGET_QUOTE_SIZE_USD=25
-ALPHA_REWARD_MIN_ORDER_SIZE_USD=20
-ALPHA_REWARD_MAX_ORDER_SIZE_USD=30
-ALPHA_SPREAD_TARGET_ORDER_SIZE_USD=2
-ALPHA_SPREAD_MIN_ORDER_SIZE_USD=1
-ALPHA_SPREAD_MAX_ORDER_SIZE_USD=3
-ALPHA_PARITY_MIN_TRADE_USD=1
-ALPHA_PARITY_MAX_TRADE_USD=2
 ```
+
+## Architecture
+
+```
+live / scan tick
+  → Amarok MCP (amarok_get_scan / opportunities / quotes) with x402 paymentSignature
+  → local quoteEngine + risk / inventory
+  → place: amarok_get_execution_quote → sign unsignedTxnsBase64 → algod sendRawTransaction
+  → cancel / claim / merge / split / wallet orders: @alpha-arcade/sdk (venue ops Amarok does not expose yet)
+```
+
+Integration code lives under `src/integrations/amarok/` (MCP client + x402 payment builder), `src/integrations/zerosignal/` (zs-proxy OpenAI client + tool loop), and `src/integrations/algorand/submitUnsigned.ts`.
+
+## Operator notes
+
+- Delete obsolete Div3rsaFi / `POLY_*` knobs if unused. Keep `ALPHA_API_KEY` for Alpha SDK wallet-order sync until Amarok covers venue ops.
+- Use a dedicated hot wallet with USDC for x402 + trading collateral and ALGO for fees (and zs-proxy prepaid ticket / MBR).
+- The mnemonic is never sent to Amarok, Telegram, logs, or the model; import the same mnemonic into zs-proxy for inference.
+
+## Roadmap
+
+See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (Ghillie-bot rename, MIT license, CONTRIBUTING, ZeroSignal LLM with no provider fallback, prompt review, and more).

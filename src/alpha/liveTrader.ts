@@ -28,6 +28,8 @@ import {
   INVENTORY_SHARE_EPSILON,
 } from "./inventoryView.js";
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
+import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
+import { parseExecutionQuotePayload, signAndSubmitUnsignedGroup } from "../integrations/algorand/submitUnsigned.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 const CONTROLLED_UNDERWATER_EXIT_REASON = "controlled underwater exit";
@@ -1487,6 +1489,8 @@ export async function runLiveTick(
 
   let remainingLiveBidUsdc = walletUsdcBalanceUsd;
   let reportedBidBudgetDepleted = false;
+  const amarokRuntime = mode === "live" ? createAmarokRuntime(config) : undefined;
+  try {
   for (const quote of placementQueue) {
     let quoteToPlace = quote;
     let pendingQuote = quote;
@@ -1580,12 +1584,29 @@ export async function runLiveTick(
     }
     removePendingQuote();
     try {
-      const result = await liveClient.createLimitOrder({
-        marketAppId: quoteToPlace.marketAppId,
-        outcome: quoteToPlace.outcome,
-        price: quoteToPlace.price,
-        sizeShares: quoteToPlace.sizeShares,
-        isBuying: quoteToPlace.side === "bid",
+      if (!amarokRuntime || !config.walletAddress) {
+        throw new Error("ALPHA_WALLET_MNEMONIC is required to place via Amarok");
+      }
+      const quoteResult = await amarokRuntime.client.getExecutionQuote(config.walletAddress, [
+        {
+          shapeKey: "alpha_place_limit_order",
+          input: {
+            marketAppId: quoteToPlace.marketAppId,
+            outcome: quoteToPlace.outcome,
+            side: quoteToPlace.side,
+            price: quoteToPlace.price,
+            sizeShares: quoteToPlace.sizeShares,
+          },
+        },
+      ]);
+      const parsed = parseExecutionQuotePayload(quoteResult.data);
+      const result = await signAndSubmitUnsignedGroup({
+        wallet: amarokRuntime.wallet,
+        algodServer: config.algodServer,
+        algodToken: config.algodToken,
+        unsignedTxnsBase64: parsed.unsignedTxnsBase64,
+        userSignIndexes: parsed.userSignIndexes,
+        knownEscrowAppId: parsed.escrowAppId,
       });
       const tracked = toTrackedLiveOrder(quoteToPlace, result);
       if (tracked.status === "open") {
@@ -1618,6 +1639,9 @@ export async function runLiveTick(
       }
       actions.push({ kind: "skip", message: `Place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}` });
     }
+  }
+  } finally {
+    await amarokRuntime?.close();
   }
   logLiveMemory("after_placements", {
     openOrders: state.openOrders.length,

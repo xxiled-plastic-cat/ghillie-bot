@@ -3,7 +3,7 @@ import algosdk from "algosdk";
 
 import { readAlphaConfig } from "./alphaConfig.js";
 import { AlphaSdkClient } from "./alphaClient.js";
-import { loadAlphaScan, type AlphaScanResult } from "./alphaMarketScanner.js";
+import { loadAlphaScan, loadAmarokMarket, type AlphaScanResult } from "./alphaMarketScanner.js";
 import { rankRewardCandidates } from "./alphaRewardScanner.js";
 import { scanParity } from "./alphaParityScanner.js";
 import { saveAlphaState, loadAlphaState } from "./alphaStateStore.js";
@@ -82,7 +82,8 @@ async function runCapitalReportCommand(): Promise<void> {
 
   const client = new AlphaSdkClient(config, false);
   const state = await loadAlphaState(config.stateKey, config.paperStartingBalanceUsd);
-  const markets = await client.getLiveMarkets();
+  const scan = await loadAlphaScan(config);
+  const markets = [...new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market])).values()];
   const marketAppIds = markets.map((market) => market.marketAppId);
 
   let walletUsdc: number | undefined;
@@ -192,7 +193,7 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
     throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for cancel-order");
   }
   if (parsed.execute && !config.walletMnemonic) {
-    throw new Error("ALPHA_WALLET_MNEMONIC or PAYER_MNEMONIC is required to --execute a cancel");
+    throw new Error("ALPHA_WALLET_MNEMONIC is required to --execute a cancel");
   }
 
   const client = new AlphaSdkClient(config, parsed.execute);
@@ -323,11 +324,11 @@ async function buildScan(liveSigner = false) {
   logStartupDebug(`buildScan start liveSigner=${liveSigner}`);
   const config = readAlphaConfig();
   logStartupDebug(
-    `buildScan config loaded matcherAppId=${config.matcherAppId} usdcAssetId=${config.usdcAssetId} wallet=${config.walletAddress ?? "none"}`,
+    `buildScan config loaded matcherAppId=${config.matcherAppId} usdcAssetId=${config.usdcAssetId} wallet=${config.walletAddress ?? "none"} amarokMcp=${config.amarokMcpUrl}`,
   );
   const client = new AlphaSdkClient(config, liveSigner);
-  logStartupDebug(`buildScan client created liveSigner=${liveSigner}`);
-  const scan = await loadAlphaScan(client, config);
+  logStartupDebug(`buildScan venue client created liveSigner=${liveSigner}`);
+  const scan = await loadAlphaScan(config);
   logStartupDebug(
     `buildScan scan loaded markets=${scan.markets.length} rewardMarkets=${scan.rewardMarkets.length} orderbooks=${scan.orderbooks.size} rewardError=${scan.rewardError ?? "none"}`,
   );
@@ -362,11 +363,9 @@ async function runRewardsCommand(): Promise<void> {
 
 async function runMarketCommand(arg: string | undefined): Promise<void> {
   if (!arg) throw new Error("Usage: npm run alpha:market -- <slug-or-id>");
-  const { client } = await buildScan(false);
-  const market = await client.getMarket(arg);
-  if (!market) throw new Error(`Alpha market not found: ${arg}`);
-  const book = await client.getOrderbook(market);
-  printMarketDetail(market, book);
+  const config = readAlphaConfig();
+  const { market, orderbook } = await loadAmarokMarket(config, arg);
+  printMarketDetail(market, orderbook);
 }
 
 async function runPaperCommand(): Promise<void> {

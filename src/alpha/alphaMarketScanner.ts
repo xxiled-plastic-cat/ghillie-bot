@@ -1,12 +1,13 @@
 import type { AlphaConfig } from "./alphaConfig.js";
 import type { AlphaMarket, AlphaOrderbook } from "./alphaTypes.js";
-import { AlphaSdkClient } from "./alphaClient.js";
 import {
   loadInactiveMarketAppIds,
   statusFromMarket,
   statusFromOrderbookResult,
   upsertAlphaMarketStatus,
 } from "./alphaMarketStatusStore.js";
+import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
+import { marketFromAmarok, orderbookFromAmarok, scanFromAmarok } from "../integrations/amarok/adapters.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 function logStartupDebug(message: string): void {
@@ -30,11 +31,6 @@ function isLiveMarket(market: AlphaMarket): boolean {
   return !market.resolved && market.status === "live";
 }
 
-function parsePositiveIntOrFallback(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.floor(value));
-}
-
 function parseOptionalLimit(value: number): number | undefined {
   if (!Number.isFinite(value)) return undefined;
   const normalized = Math.floor(value);
@@ -46,127 +42,160 @@ function shouldPersistMarketStatus(): boolean {
   return process.env.ALPHA_MARKET_STATUS_PERSISTENCE !== "false";
 }
 
-export async function loadAlphaScan(client: AlphaSdkClient, config: AlphaConfig): Promise<AlphaScanResult> {
+/**
+ * Load Alpha market intel exclusively via Amarok remote MCP (paid x402).
+ */
+export async function loadAlphaScan(config: AlphaConfig): Promise<AlphaScanResult> {
   const startedAt = Date.now();
-  logStartupDebug(`loadAlphaScan start maxMarketsPerScan=${config.maxMarketsPerScan}`);
-  const fetchedMarkets = await client.getLiveMarkets();
-  let markets = fetchedMarkets.filter(isLiveMarket);
-  logStartupDebug(`live markets fetched count=${markets.length}`);
-  let fetchedRewardMarkets: AlphaMarket[] = [];
-  let rewardMarkets: AlphaMarket[] = [];
-  let rewardError: string | undefined;
+  logStartupDebug(`loadAlphaScan start maxMarketsPerScan=${config.maxMarketsPerScan} mcp=${config.amarokMcpUrl}`);
+
+  if (!config.walletAddress) {
+    throw new Error("ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok scan");
+  }
+
+  const runtime = createAmarokRuntime(config);
   try {
-    fetchedRewardMarkets = await client.getRewardMarkets();
-    rewardMarkets = fetchedRewardMarkets.filter(isLiveMarket);
-    logStartupDebug(`reward markets fetched count=${rewardMarkets.length}`);
-  } catch (error) {
-    rewardError = error instanceof Error ? error.message : String(error);
-    logStartupDebug(`reward markets fetch failed error=${rewardError}`);
-  }
+    const scanArgs: Record<string, unknown> = {};
+    const maxMarketsPerScan = parseOptionalLimit(config.maxMarketsPerScan);
+    if (maxMarketsPerScan) scanArgs.limit = maxMarketsPerScan;
 
-  const seenAt = new Date();
-  const seenMarketsByAppId = new Map<number, AlphaMarket>(
-    [...rewardMarkets, ...markets, ...fetchedRewardMarkets, ...fetchedMarkets].map((market) => [market.marketAppId, market]),
-  );
-  const seenMarkets = [...seenMarketsByAppId.values()];
-  const persistMarketStatus = shouldPersistMarketStatus();
-  let marketStatusStoreAvailable = persistMarketStatus;
-  if (persistMarketStatus) {
-    try {
-      const inactiveMarketAppIds = await loadInactiveMarketAppIds(seenMarkets.map((market) => market.marketAppId));
-      if (inactiveMarketAppIds.size > 0) {
-        markets = markets.filter((market) => !inactiveMarketAppIds.has(market.marketAppId));
-        rewardMarkets = rewardMarkets.filter((market) => !inactiveMarketAppIds.has(market.marketAppId));
-        logStartupDebug(
-          `persisted inactive markets filtered count=${inactiveMarketAppIds.size} remaining_live=${markets.length} remaining_reward=${rewardMarkets.length}`,
-        );
-      }
-
-      await upsertAlphaMarketStatus(seenMarkets.map((market) => statusFromMarket(market, seenAt)));
-      logStartupDebug(`market status rows upserted count=${seenMarkets.length}`);
-    } catch (error) {
-      marketStatusStoreAvailable = false;
-      const message = shortError(error);
-      logStartupDebug(`market status store unavailable; proceeding without persisted filtering error=${message}`);
-    }
-  } else {
-    logStartupDebug("market status persistence disabled");
-  }
-
-  const rewardByAppId = new Map<number, AlphaMarket>();
-  for (const market of rewardMarkets) rewardByAppId.set(market.marketAppId, market);
-  const spreadByAppId = new Map<number, AlphaMarket>();
-  for (const market of markets) {
-    if (!rewardByAppId.has(market.marketAppId)) spreadByAppId.set(market.marketAppId, market);
-  }
-  const marketsToScanByAppId = new Map<number, AlphaMarket>();
-  for (const market of rewardByAppId.values()) {
-    marketsToScanByAppId.set(market.marketAppId, market);
-  }
-  for (const market of spreadByAppId.values()) {
-    marketsToScanByAppId.set(market.marketAppId, market);
-  }
-  const allMarketsToScan = [...marketsToScanByAppId.values()];
-  const maxMarketsPerScan = parseOptionalLimit(config.maxMarketsPerScan);
-  const marketsToScan = maxMarketsPerScan ? allMarketsToScan.slice(0, maxMarketsPerScan) : allMarketsToScan;
-  if (maxMarketsPerScan && allMarketsToScan.length > marketsToScan.length) {
-    logStartupDebug(
-      `markets truncated for scan selected=${marketsToScan.length} total_live_candidates=${allMarketsToScan.length}`,
+    const scanResult = await runtime.client.getScan(config.walletAddress, scanArgs);
+    const opportunitiesResult = await runtime.client.listOpportunities(
+      config.walletAddress,
+      maxMarketsPerScan ? { limit: maxMarketsPerScan } : {},
     );
-  }
-  const concurrency = parsePositiveIntOrFallback(config.orderbookFetchConcurrency, 12);
-  logStartupDebug(
-    `markets selected for orderbook scan count=${marketsToScan.length} concurrency=${Math.min(concurrency, Math.max(marketsToScan.length, 1))}`,
-  );
+    const quotesResult = await runtime.client.getQuotes(
+      config.walletAddress,
+      maxMarketsPerScan ? { limit: maxMarketsPerScan } : {},
+    );
 
-  const books: Array<readonly [number, AlphaOrderbook]> = new Array(marketsToScan.length);
-  let nextIndex = 0;
-  const workerCount = Math.min(concurrency, Math.max(marketsToScan.length, 1));
-  await Promise.all(
-    Array.from({ length: workerCount }, async (_unused, workerIdx) => {
-      while (true) {
-        const index = nextIndex;
-        nextIndex += 1;
-        if (index >= marketsToScan.length) break;
-        const market = marketsToScan[index];
-        if (index < 5 || (index + 1) % 25 === 0) {
+    let adapted = scanFromAmarok({
+      scanPayload: scanResult.data,
+      opportunitiesPayload: opportunitiesResult.data,
+      quotesPayload: quotesResult.data,
+    });
+
+    let markets = adapted.markets.filter(isLiveMarket);
+    let rewardMarkets = adapted.rewardMarkets.filter(isLiveMarket);
+    logStartupDebug(
+      `amarok scan adapted markets=${markets.length} rewardMarkets=${rewardMarkets.length} orderbooks=${adapted.orderbooks.size}`,
+    );
+
+    const seenAt = new Date();
+    const seenMarketsByAppId = new Map<number, AlphaMarket>(
+      [...rewardMarkets, ...markets].map((market) => [market.marketAppId, market]),
+    );
+    const seenMarkets = [...seenMarketsByAppId.values()];
+    const persistMarketStatus = shouldPersistMarketStatus();
+    let marketStatusStoreAvailable = persistMarketStatus;
+    if (persistMarketStatus) {
+      try {
+        const inactiveMarketAppIds = await loadInactiveMarketAppIds(seenMarkets.map((market) => market.marketAppId));
+        if (inactiveMarketAppIds.size > 0) {
+          markets = markets.filter((market) => !inactiveMarketAppIds.has(market.marketAppId));
+          rewardMarkets = rewardMarkets.filter((market) => !inactiveMarketAppIds.has(market.marketAppId));
           logStartupDebug(
-            `orderbook fetch start idx=${index + 1}/${marketsToScan.length} appId=${market.marketAppId} worker=${workerIdx + 1}`,
+            `persisted inactive markets filtered count=${inactiveMarketAppIds.size} remaining_live=${markets.length} remaining_reward=${rewardMarkets.length}`,
           );
         }
-        const book = await client.getOrderbook(market);
-        books[index] = [market.marketAppId, book] as const;
-        if (index < 5 || (index + 1) % 25 === 0) {
-          logStartupDebug(
-            `orderbook fetch done idx=${index + 1}/${marketsToScan.length} appId=${market.marketAppId} worker=${workerIdx + 1}`,
-          );
-        }
+        await upsertAlphaMarketStatus(seenMarkets.map((market) => statusFromMarket(market, seenAt)));
+        logStartupDebug(`market status rows upserted count=${seenMarkets.length}`);
+      } catch (error) {
+        marketStatusStoreAvailable = false;
+        logStartupDebug(`market status store unavailable; proceeding without persisted filtering error=${shortError(error)}`);
       }
-    }),
-  );
-  const postFetchStatuses = marketsToScan
-    .map((market, index) => {
-      const entry = books[index];
-      if (!entry) return undefined;
-      return statusFromOrderbookResult(market, entry[1], new Date());
-    })
-    .filter((status): status is NonNullable<typeof status> => status !== undefined);
-  if (marketStatusStoreAvailable && postFetchStatuses.length > 0) {
-    try {
-      await upsertAlphaMarketStatus(postFetchStatuses);
-      logStartupDebug(`market status transitions upserted count=${postFetchStatuses.length}`);
-    } catch (error) {
-      const message = shortError(error);
-      logStartupDebug(`market status transition upsert failed error=${message}`);
+    } else {
+      logStartupDebug("market status persistence disabled");
     }
+
+    const marketsByAppId = new Map<number, AlphaMarket>();
+    for (const market of rewardMarkets) marketsByAppId.set(market.marketAppId, market);
+    for (const market of markets) marketsByAppId.set(market.marketAppId, market);
+    let marketsToScan = [...marketsByAppId.values()];
+    if (maxMarketsPerScan && marketsToScan.length > maxMarketsPerScan) {
+      marketsToScan = marketsToScan.slice(0, maxMarketsPerScan);
+      logStartupDebug(`markets truncated for scan selected=${marketsToScan.length}`);
+    }
+
+    const orderbooks = new Map<number, AlphaOrderbook>();
+    for (const market of marketsToScan) {
+      const book = adapted.orderbooks.get(market.marketAppId);
+      if (book) orderbooks.set(market.marketAppId, book);
+    }
+
+    const postFetchStatuses = marketsToScan
+      .map((market) => {
+        const book = orderbooks.get(market.marketAppId);
+        if (!book) return undefined;
+        return statusFromOrderbookResult(market, book, new Date());
+      })
+      .filter((status): status is NonNullable<typeof status> => status !== undefined);
+    if (marketStatusStoreAvailable && postFetchStatuses.length > 0) {
+      try {
+        await upsertAlphaMarketStatus(postFetchStatuses);
+        logStartupDebug(`market status transitions upserted count=${postFetchStatuses.length}`);
+      } catch (error) {
+        logStartupDebug(`market status transition upsert failed error=${shortError(error)}`);
+      }
+    }
+
+    adapted = {
+      markets: marketsToScan,
+      rewardMarkets: rewardMarkets.filter((market) => marketsToScan.some((m) => m.marketAppId === market.marketAppId)),
+      orderbooks,
+    };
+
+    logStartupDebug(`loadAlphaScan end elapsed_ms=${Date.now() - startedAt} orderbooks=${orderbooks.size}`);
+    return adapted;
+  } finally {
+    await runtime.close();
   }
-  logStartupDebug(`loadAlphaScan end elapsed_ms=${Date.now() - startedAt} orderbooks=${books.length}`);
-  return {
-    markets: marketsToScan,
-    rewardMarkets,
-    orderbooks: new Map(books),
-    rewardError,
-  };
+}
+
+export async function loadAmarokMarket(config: AlphaConfig, marketIdOrSlug: string): Promise<{
+  market: AlphaMarket;
+  orderbook: AlphaOrderbook;
+}> {
+  if (!config.walletAddress) {
+    throw new Error("ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok market lookup");
+  }
+  const runtime = createAmarokRuntime(config);
+  try {
+    const asAppId = Number.parseInt(marketIdOrSlug, 10);
+    if (Number.isFinite(asAppId) && asAppId > 0) {
+      const result = await runtime.client.getMarket(config.walletAddress, asAppId);
+      const market = marketFromAmarok(
+        (result.data as { data?: unknown })?.data ?? result.data,
+      );
+      if (!market) throw new Error(`Amarok market not found: ${marketIdOrSlug}`);
+      const bookRaw =
+        (market.raw as { book?: unknown; orderbook?: unknown } | undefined)?.book ??
+        (market.raw as { orderbook?: unknown } | undefined)?.orderbook ??
+        {};
+      return { market, orderbook: orderbookFromAmarok(market, bookRaw) };
+    }
+
+    const scan = await loadAlphaScan(config);
+    const market =
+      scan.markets.find(
+        (candidate) =>
+          candidate.id === marketIdOrSlug ||
+          candidate.slug === marketIdOrSlug ||
+          String(candidate.marketAppId) === marketIdOrSlug,
+      ) ??
+      scan.rewardMarkets.find(
+        (candidate) =>
+          candidate.id === marketIdOrSlug ||
+          candidate.slug === marketIdOrSlug ||
+          String(candidate.marketAppId) === marketIdOrSlug,
+      );
+    if (!market) throw new Error(`Amarok market not found: ${marketIdOrSlug}`);
+    const orderbook = scan.orderbooks.get(market.marketAppId);
+    if (!orderbook) throw new Error(`Amarok orderbook missing for market ${market.marketAppId}`);
+    return { market, orderbook };
+  } finally {
+    await runtime.close();
+  }
 }
 
 export function summarizeBooks(books: Iterable<AlphaOrderbook>): {

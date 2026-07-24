@@ -123,7 +123,7 @@ function resolveWalletAddressAndSigner(): { walletAddress: string; signer: algos
   const config = readAlphaConfig();
   const mnemonic = (config.walletMnemonic ?? "").trim();
   if (!mnemonic) {
-    throw new Error("Resolved asset cleanup requires ALPHA_WALLET_MNEMONIC or PAYER_MNEMONIC.");
+    throw new Error("Resolved asset cleanup requires ALPHA_WALLET_MNEMONIC.");
   }
 
   const signer = algosdk.mnemonicToSecretKey(mnemonic);
