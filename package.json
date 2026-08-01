@@ -1,7 +1,7 @@
 {
-  "name": "nuckelavee",
+  "name": "ghillie-bot",
   "version": "1.0.0",
-  "description": "Nuckelavee v1 read-only Div3rsaFi scanner",
+  "description": "Ghillie-bot: Alpha Arcade user-agent (Amarok MCP + ZeroSignal)",
   "type": "module",
   "main": "dist/index.js",
   "workspaces": [
@@ -39,6 +39,10 @@
     "amarok:opportunities": "tsx src/cli/amarokOpportunities.ts",
     "amarok:execution-dry": "tsx src/cli/amarokExecutionDry.ts",
     "zs:smoke": "tsx src/cli/zsSmoke.ts",
+    "docker:build": "docker build -t ghillie-bot .",
+    "docker:run": "docker run --rm --env-file .env -p 8788:8788 ghillie-bot",
+    "docker:smoke": "docker build -t ghillie-bot . && docker run --rm --env-file .env ghillie-bot smoke",
+    "docker:once": "docker build -t ghillie-bot . && docker run --rm --env-file .env ghillie-bot once",
     "alpha:typecheck": "tsc --noEmit",
     "poly:scan": "tsx src/polymarket/polyCommands.ts scan",
     "poly:rewards": "tsx src/polymarket/polyCommands.ts rewards",

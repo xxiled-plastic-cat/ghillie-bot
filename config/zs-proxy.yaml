@@ -1,4 +1,4 @@
-# ZeroSignal zs-proxy defaults for host / future container sidecar.
+# ZeroSignal zs-proxy defaults for host and Docker container sidecar.
 # Override via PROXY_* env vars if needed.
 algod:
   network: "mainnet"

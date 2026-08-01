@@ -28,7 +28,8 @@ export class McpSdkToolCaller implements ToolCaller {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     await this.ensureConnected();
-    return this.client.callTool({ name, arguments: args });
+    // Paid research (esp. amarok_get_scan) can exceed the SDK default 60s on a cold cache.
+    return this.client.callTool({ name, arguments: args }, undefined, { timeout: 320_000 });
   }
 
   async listTools(): Promise<McpToolDefinition[]> {

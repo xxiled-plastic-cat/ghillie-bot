@@ -1,6 +1,6 @@
-# nuckelavee
+# Ghillie-bot
 
-Alpha Arcade **user-agent**: walleted trading bot that consumes [Amarok](https://amarok.compx.io) over **remote MCP** for research and unsigned limit-order quotes, then signs and submits locally.
+Formerly **Nuckelavee**. Alpha Arcade **user-agent**: walleted trading bot that consumes [Amarok](https://amarok.compx.io) over **remote MCP** for research and unsigned limit-order quotes, then signs and submits locally.
 
 Hard boundary: Amarok never holds keys, never signs payments, and never submits orders (`executionSubmitted: false`). This bot owns x402 USDC micropayments, custody, cancel/claim/merge/split venue ops, fills, inventory, and the live loop.
 
@@ -26,7 +26,36 @@ DATABASE_URL=
 
 ## ZeroSignal (zs-proxy)
 
-LLM calls go **only** through host-local [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback.
+LLM calls go **only** through [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback. Cloud/Docker bundles **zs-proxy 0.13.2** as an in-container sidecar; local Node needs a host install.
+
+### Docker (recommended for cloud)
+
+The image starts zs-proxy on loopback, then runs `npm run alpha:cron:live`. Set the usual bot env vars plus a keystore passphrase (file backend — no OS keychain in containers):
+
+```bash
+cp .env.example .env
+# set ALPHA_WALLET_MNEMONIC, DATABASE_URL, ZEROSIGNAL_KEYSTORE_PASSPHRASE, …
+docker compose up -d --build
+# or:
+npm run docker:build
+docker run --rm --env-file .env \
+  -e ZEROSIGNAL_KEYSTORE_PASSPHRASE='long-random-secret' \
+  -p 8788:8788 \
+  ghillie-bot
+```
+
+`docker/entrypoint.sh` imports `ALPHA_WALLET_MNEMONIC` into zs-proxy, runs `zs-proxy fund`, waits for `/healthz`, then starts the cron worker. Spend caps default from [`config/zs-proxy.yaml`](./config/zs-proxy.yaml) (override with `PROXY_SPEND_*`). Relay privacy defaults **off** (`zs.privacy: false`; override with `PROXY_ZS_PRIVACY=true`).
+
+```bash
+# Safe connectivity smoke (LLM + one Amarok research call)
+npm run docker:smoke
+# or: docker run --rm --env-file .env ghillie-bot smoke
+
+# One live cron tick
+npm run docker:once
+```
+
+### Local host zs-proxy
 
 ```bash
 # macOS: brew install txnlab/tap/zs-proxy
@@ -43,9 +72,9 @@ OPENAI_REASONING_EFFORT=medium
 AI_MODE=full
 ```
 
-`OPEN_AI_API_KEY` is a placeholder; admission is the on-chain wallet seal. Proxy defaults (`zs.privacy: false`, spend caps) live in [`config/zs-proxy.yaml`](./config/zs-proxy.yaml). Multi-turn agents always set `store: false` and replay conversation client-side (never `previous_response_id`).
+`OPEN_AI_API_KEY` is a placeholder; admission is the on-chain wallet seal. Multi-turn agents always set `store: false` and replay conversation client-side (never `previous_response_id`).
 
-Smoke (spends ZeroSignal + one Amarok x402 research call):
+Smoke (spends ZeroSignal + one Amarok x402 research call; host zs-proxy must already be running):
 
 ```bash
 npm run zs:smoke
@@ -100,24 +129,21 @@ npm run alpha:cron:live
 npm run alpha:cron:live:once
 ```
 
-For DigitalOcean App Platform:
-
-```bash
-npm run alpha:cron:live
-```
-
-Typical App Platform env:
+For DigitalOcean App Platform: build from the root `Dockerfile`, leave the run command empty (entrypoint defaults to `alpha:cron:live`), and set:
 
 ```env
 DATABASE_URL=
 AMAROK_MCP_URL=https://amarok-mcp.compx.io/mcp
 MAX_DAILY_X402_BASE_UNITS=5000000
 ALPHA_WALLET_MNEMONIC=
+ZEROSIGNAL_KEYSTORE_PASSPHRASE=
 ALPHA_ENABLE_LIVE_TRADING=true
 ALPHA_CONFIRM_RISK=true
 ALPHA_CRON_SCHEDULE=*/2 * * * *
 ALPHA_CRON_COMMAND=npm run alpha:live
 ```
+
+App Platform sets `PORT` for readiness probes (cron health on `/health` / `/healthz`).
 
 ## Architecture
 
@@ -139,4 +165,4 @@ Integration code lives under `src/integrations/amarok/` (MCP client + x402 payme
 
 ## Roadmap
 
-See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (Ghillie-bot rename, MIT license, CONTRIBUTING, ZeroSignal LLM with no provider fallback, prompt review, and more).
+See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (MIT license, CONTRIBUTING, ZeroSignal decide/review agent, prompt review, and more).

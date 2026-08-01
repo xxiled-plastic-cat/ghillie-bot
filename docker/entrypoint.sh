@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Start host-local zs-proxy in-process, then Alpha cron. Used by the Docker
+# image on DigitalOcean (and any single-container host) where a separate host
+# binary is not available.
+set -euo pipefail
+
+PROXY_BIN="${ZS_PROXY_BIN:-/usr/local/bin/zs-proxy}"
+PROXY_CONFIG="${ZS_PROXY_CONFIG:-/app/config/zs-proxy.yaml}"
+PROXY_URL="${OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}"
+PROXY_HEALTH="${PROXY_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+
+if [[ ! -x "$PROXY_BIN" ]]; then
+  echo "zs-proxy binary not found at $PROXY_BIN" >&2
+  exit 1
+fi
+
+if [[ -z "${ALPHA_WALLET_MNEMONIC:-}" ]]; then
+  echo "ALPHA_WALLET_MNEMONIC is required (shared Amarok x402 + ZeroSignal payer)" >&2
+  exit 1
+fi
+
+# Containers have no OS keychain — use the encrypted-file backend.
+export ZEROSIGNAL_KEYRING_BACKEND="${ZEROSIGNAL_KEYRING_BACKEND:-file}"
+if [[ -z "${ZEROSIGNAL_KEYSTORE_PASSPHRASE:-}" ]]; then
+  echo "ZEROSIGNAL_KEYSTORE_PASSPHRASE is required when ZEROSIGNAL_KEYRING_BACKEND=file" >&2
+  exit 1
+fi
+
+# Ensure a writable home for zs-proxy state (wallet.json, spend counters).
+export HOME="${HOME:-/home/node}"
+mkdir -p "$HOME/.config/zerosignal"
+
+echo "Importing shared wallet into zs-proxy (file keyring)..."
+printf '%s\n' "$ALPHA_WALLET_MNEMONIC" | "$PROXY_BIN" wallet import \
+  --stdin \
+  --yes \
+  --force \
+  --network mainnet
+
+# zs-proxy auto-loads every *_MNEMONIC from the process env. Live container
+# runs must pay with ALPHA_WALLET_MNEMONIC only — drop extra verify/test
+# mnemonics before fund/proxy start so they never enter the proxy keystore.
+unset TEST_MNEMONIC TEST_WALLET WALLET_MNEMONIC
+
+# When multiple mnemonics remain loaded, zs-proxy requires an explicit payer.
+if [[ -z "${PROXY_ZS_PROXY_PAYER_ADDR:-}" ]]; then
+  PROXY_ZS_PROXY_PAYER_ADDR="$("$PROXY_BIN" wallet address)"
+fi
+if [[ -z "${PROXY_ZS_PROXY_PAYER_ADDR:-}" ]]; then
+  echo "Could not resolve zs-proxy payer address after wallet import" >&2
+  exit 1
+fi
+export PROXY_ZS_PROXY_PAYER_ADDR
+echo "ZeroSignal proxy payer: $PROXY_ZS_PROXY_PAYER_ADDR"
+
+# Opt into the ZeroSignal escrow app and fund the prepaid ticket-MBR pool
+# (~1.15 ALGO for 10 slots). Without this, reserves fail with payer_not_opted_in
+# (often misreported as operators_busy / 503).
+echo "Ensuring ZeroSignal prepaid MBR pool (zs-proxy fund)..."
+"$PROXY_BIN" fund --network mainnet
+
+echo "Starting zs-proxy (foreground child)..."
+# Pipe proxy logs through a sanitizer so CDN HTML 502/504 bodies do not flood
+# the shared container stdout.
+ZS_LOG_FILTER="${ZS_LOG_FILTER:-/app/docker/sanitize-zs-logs.mjs}"
+if [[ -f "$ZS_LOG_FILTER" ]]; then
+  "$PROXY_BIN" proxy start --foreground --config "$PROXY_CONFIG" --network mainnet \
+    > >(node "$ZS_LOG_FILTER") 2>&1 &
+else
+  echo "zs-proxy log filter missing at $ZS_LOG_FILTER; raw proxy logs enabled" >&2
+  "$PROXY_BIN" proxy start --foreground --config "$PROXY_CONFIG" --network mainnet &
+fi
+PROXY_PID=$!
+
+cleanup() {
+  if kill -0 "$PROXY_PID" 2>/dev/null; then
+    kill "$PROXY_PID" 2>/dev/null || true
+    wait "$PROXY_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+echo "Waiting for zs-proxy at $PROXY_HEALTH ..."
+for _ in $(seq 1 60); do
+  if curl -sf "$PROXY_HEALTH" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+    echo "zs-proxy exited before becoming healthy" >&2
+    wait "$PROXY_PID" || true
+    exit 1
+  fi
+  sleep 0.5
+done
+
+if ! curl -sf "$PROXY_HEALTH" >/dev/null 2>&1; then
+  echo "zs-proxy did not become healthy in time" >&2
+  exit 1
+fi
+
+echo "zs-proxy ready; OPENAI_BASE_URL=${PROXY_URL}"
+export OPENAI_BASE_URL="$PROXY_URL"
+export OPEN_AI_API_KEY="${OPEN_AI_API_KEY:-zerosignal}"
+
+mode="${1:-}"
+if [[ "$mode" == "smoke" || "$mode" == "llm-smoke" || "${RUN_LLM_SMOKE:-}" == "true" ]]; then
+  echo "Running ZeroSignal+Amarok LLM smoke (npm run zs:smoke)..."
+  npm run zs:smoke
+  status=$?
+elif [[ "$mode" == "once" || "${RUN_ONCE:-}" == "true" ]]; then
+  echo "Running one-shot live cron tick (npm run alpha:cron:live:once)..."
+  npm run alpha:cron:live:once
+  status=$?
+else
+  # Keep this shell as PID 1 so the trap can stop zs-proxy on SIGTERM (DO/K8s).
+  echo "Starting Alpha cron live (npm run alpha:cron:live)..."
+  npm run alpha:cron:live
+  status=$?
+fi
+
+cleanup
+trap - EXIT INT TERM
+exit "$status"
