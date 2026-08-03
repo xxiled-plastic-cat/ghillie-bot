@@ -83,6 +83,9 @@ export interface ManagedToolResult {
 
 const TOOL_RESOURCE_PATHS: Record<string, string | ((args: Record<string, unknown>) => string)> = {
   amarok_list_opportunities: "/v1/alpha/opportunities",
+  amarok_list_rewards: "/v1/alpha/rewards",
+  amarok_list_spreads: "/v1/alpha/spreads",
+  amarok_list_parity: "/v1/alpha/parity",
   amarok_get_market: (args) => `/v1/alpha/markets/${String(args.marketAppId)}`,
   amarok_get_quotes: "/v1/alpha/quotes",
   amarok_get_scan: "/v1/alpha/scan",
@@ -169,6 +172,18 @@ export class AmarokClient {
 
   async listOpportunities(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_list_opportunities", args, walletAddress);
+  }
+
+  async listRewards(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+    return this.callManagedTool("amarok_list_rewards", args, walletAddress);
+  }
+
+  async listSpreads(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+    return this.callManagedTool("amarok_list_spreads", args, walletAddress);
+  }
+
+  async listParity(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+    return this.callManagedTool("amarok_list_parity", args, walletAddress);
   }
 
   async getMarket(walletAddress: string, marketAppId: number): Promise<ManagedToolResult> {

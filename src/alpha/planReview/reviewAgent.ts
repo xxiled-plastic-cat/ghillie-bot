@@ -14,9 +14,13 @@ import {
   type ResponsesClient,
   type ZeroSignalReasoningEffort,
 } from "../../integrations/zerosignal/index.js";
+import { loadOperatorPreferencesFromEnv } from "../../integrations/storage/operatorPreferences.js";
 import { applyPlanReviewDecisions, type PlanReviewSkipAction } from "./apply.js";
 import { buildPlanReviewPayload, isEntryQuote } from "./payload.js";
-import { PLAN_REVIEW_JSON_REPAIR_MESSAGE, PLAN_REVIEW_PROMPT } from "./prompt.js";
+import {
+  PLAN_REVIEW_JSON_REPAIR_MESSAGE,
+  buildPlanReviewInstructions,
+} from "./prompt.js";
 import { parsePlanReviewResponse, type PlanReviewResponse } from "./schema.js";
 
 export type PlanReviewAgentResult = {
@@ -39,6 +43,14 @@ export type RunPlanReviewOptions = {
   reasoningEffort?: ZeroSignalReasoningEffort;
   /** Injected for tests — skip real health check when client is mocked. */
   skipHealthCheck?: boolean;
+  /**
+   * Optional operator strategy markdown. When undefined, loads from Spaces
+   * (`{DO_SPACES_PREFIX}/operator-preferences.md`) or local `config/operator-preferences.md`.
+   * Pass `""` or inject `loadOperatorPreferences` in tests to skip I/O.
+   */
+  operatorPreferences?: string;
+  /** Injected for tests — replaces Spaces/local load. */
+  loadOperatorPreferences?: () => Promise<string | undefined>;
 };
 
 async function callPlanReviewModel(input: {
@@ -46,12 +58,13 @@ async function callPlanReviewModel(input: {
   model: string;
   reasoningEffort: ZeroSignalReasoningEffort;
   payloadJson: string;
+  instructions: string;
   charges: InferenceCostCharge[];
 }): Promise<string> {
   const first = await createAgentResponse(input.responses, {
     model: input.model,
     store: false,
-    instructions: PLAN_REVIEW_PROMPT,
+    instructions: input.instructions,
     input: input.payloadJson,
     reasoning: { effort: input.reasoningEffort },
   });
@@ -75,7 +88,7 @@ async function callPlanReviewModel(input: {
   const repair = await createAgentResponse(input.responses, {
     model: input.model,
     store: false,
-    instructions: PLAN_REVIEW_PROMPT,
+    instructions: input.instructions,
     input: repairInput,
     reasoning: { effort: input.reasoningEffort },
   });
@@ -140,11 +153,20 @@ export async function runPlanReview(options: RunPlanReviewOptions): Promise<Plan
       await assertZsProxyHealthy(zs.config.openaiBaseUrl);
     }
 
+    const operatorPreferences =
+      options.operatorPreferences !== undefined
+        ? options.operatorPreferences
+        : options.loadOperatorPreferences
+          ? await options.loadOperatorPreferences()
+          : await loadOperatorPreferencesFromEnv();
+    const instructions = buildPlanReviewInstructions(operatorPreferences);
+
     const text = await callPlanReviewModel({
       responses,
       model,
       reasoningEffort,
       payloadJson,
+      instructions,
       charges,
     });
     response = parsePlanReviewResponse(text);

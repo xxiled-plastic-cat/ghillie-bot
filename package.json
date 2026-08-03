@@ -37,6 +37,9 @@
     "alpha:dashboard": "concurrently \"npm run alpha:dashboard:api\" \"npm run alpha:dashboard:web\"",
     "amarok:discovery": "tsx src/cli/amarokDiscovery.ts",
     "amarok:opportunities": "tsx src/cli/amarokOpportunities.ts",
+    "amarok:rewards": "tsx src/cli/amarokLaneList.ts rewards",
+    "amarok:spreads": "tsx src/cli/amarokLaneList.ts spreads",
+    "amarok:parity": "tsx src/cli/amarokLaneList.ts parity",
     "amarok:execution-dry": "tsx src/cli/amarokExecutionDry.ts",
     "zs:smoke": "tsx src/cli/zsSmoke.ts",
     "docker:build": "docker build -t ghillie-bot .",
@@ -54,7 +57,7 @@
     "poly:cron:once": "tsx src/polymarket/polyCron.ts --once",
     "poly:typecheck": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts"
+    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
   },
   "keywords": [],
   "author": "",

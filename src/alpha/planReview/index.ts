@@ -1,4 +1,8 @@
-export { PLAN_REVIEW_PROMPT, PLAN_REVIEW_JSON_REPAIR_MESSAGE } from "./prompt.js";
+export {
+  PLAN_REVIEW_PROMPT,
+  PLAN_REVIEW_JSON_REPAIR_MESSAGE,
+  buildPlanReviewInstructions,
+} from "./prompt.js";
 export {
   buildPlanReviewPayload,
   computePostFillInventory,

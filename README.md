@@ -30,6 +30,8 @@ DO_SPACES_SECRET=
 
 Alpha PnL / positions / orders live in a JSON object on DigitalOcean Spaces (same pattern as brownie-bot), key `{DO_SPACES_PREFIX}/bot-states/{ALPHA_STATE_KEY}.json` (default `ghillie-bot/bot-states/alpha.json`). If Spaces env is omitted, state is written under `BOT_STATE_DATA_DIR` (default `data/bot-states`) with the same key layout. Polymarket paper state uses the same store under `POLY_PAPER_STATE_KEY` (default `poly-paper`).
 
+Optional plan-review **operator preferences** (prose strategy, e.g. prefer rewards then spread) load from `{DO_SPACES_PREFIX}/operator-preferences.md`, or `config/operator-preferences.md` when Spaces is unset — see [`config/operator-preferences.example.md`](./config/operator-preferences.example.md). The open-source base prompt stays in code; missing prefs leave it unchanged.
+
 No Postgres / Supabase is required.
 
 `ALPHA_API_KEY` is still used for Alpha SDK **venue ops** Amarok does not expose yet (wallet open-order sync). Research and limit placement go through Amarok MCP with per-call x402 payments from the agent wallet.
@@ -106,7 +108,10 @@ npm run zs:smoke
 
 ```bash
 npm run amarok:discovery          # free health / discovery / shapes
-npm run amarok:opportunities      # paid list (spends USDC)
+npm run amarok:opportunities      # paid mixed list (spends USDC)
+npm run amarok:rewards            # paid ranked LP rewards (spends USDC)
+npm run amarok:spreads            # paid ranked maker/spreads (spends USDC)
+npm run amarok:parity             # paid ranked YES+NO parity (spends USDC)
 npm run amarok:execution-dry -- --market <marketAppId>
 npm run amarok:execution-dry -- --market <marketAppId> --submit
 ```

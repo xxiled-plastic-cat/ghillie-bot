@@ -1,6 +1,8 @@
 /**
- * Canonical system prompt for the Alpha plan-review agent.
+ * Canonical system prompt for the Alpha plan-review agent (open-source base).
  * Host plans quotes deterministically; the model only vetoes / shrinks entries.
+ * Operator-specific strategy prose is loaded separately (Spaces / local file)
+ * and appended via {@link buildPlanReviewInstructions}.
  */
 export const PLAN_REVIEW_PROMPT = `You are Ghillie's plan reviewer for Alpha Arcade limit orders.
 
@@ -36,3 +38,15 @@ OUTPUT SCHEMA
 
 export const PLAN_REVIEW_JSON_REPAIR_MESSAGE =
   "Your previous reply was not valid plan-review JSON. Reply with ONLY one top-level JSON object matching the schema (decisions array required). No markdown or code fences.";
+
+/**
+ * Merge optional operator preferences onto the OS base prompt.
+ * Empty / missing prefs leave the base prompt unchanged.
+ */
+export function buildPlanReviewInstructions(operatorPreferences?: string): string {
+  const trimmed = operatorPreferences?.trim();
+  if (!trimmed) {
+    return PLAN_REVIEW_PROMPT;
+  }
+  return `${PLAN_REVIEW_PROMPT}\n\nOPERATOR PREFERENCES\n${trimmed}`;
+}

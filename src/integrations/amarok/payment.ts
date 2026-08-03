@@ -54,6 +54,9 @@ export const AMAROK_API_ORIGIN = "https://amarok-api.compx.io";
 /** Per-path micro-USDC ceilings (aligned with Amarok discovery prices). */
 const ENDPOINT_CEILINGS: Array<{ match: (path: string) => boolean; ceiling: bigint }> = [
   { match: (path) => path === "/v1/alpha/opportunities", ceiling: 50_000n },
+  { match: (path) => path === "/v1/alpha/rewards", ceiling: 50_000n },
+  { match: (path) => path === "/v1/alpha/spreads", ceiling: 50_000n },
+  { match: (path) => path === "/v1/alpha/parity", ceiling: 50_000n },
   { match: (path) => /^\/v1\/alpha\/markets\/\d+$/.test(path), ceiling: 50_000n },
   { match: (path) => path === "/v1/alpha/quotes", ceiling: 60_000n },
   { match: (path) => path === "/v1/alpha/scan", ceiling: 250_000n },

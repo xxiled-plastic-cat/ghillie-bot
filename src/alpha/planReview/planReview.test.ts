@@ -275,6 +275,7 @@ describe("planReview runPlanReview", () => {
       skipHealthCheck: true,
       model: "test-model",
       reasoningEffort: "low",
+      operatorPreferences: "",
     });
 
     assert.equal(result.reviewed, true);
@@ -305,6 +306,7 @@ describe("planReview runPlanReview", () => {
       skipHealthCheck: true,
       model: "test-model",
       reasoningEffort: "low",
+      operatorPreferences: "",
     });
 
     assert.equal(calls, 2); // initial + repair
@@ -345,10 +347,49 @@ describe("planReview runPlanReview", () => {
       skipHealthCheck: true,
       model: "test-model",
       reasoningEffort: "low",
+      operatorPreferences: "",
     });
 
     assert.equal(calls, 2);
     assert.equal(result.placementQueue.length, 0);
     assert.ok(result.actions.some((action) => /thin_book/.test(action.message)));
+  });
+
+  it("appends OPERATOR PREFERENCES into model instructions", async () => {
+    const entry = quote({ side: "bid", outcome: "YES", source: "reward" });
+    const id = entryReviewId(entry, 0);
+    let capturedInstructions: string | undefined;
+    const client: ResponsesClient = {
+      responses: {
+        async create(request) {
+          const body = request as { instructions?: string };
+          capturedInstructions = typeof body.instructions === "string" ? body.instructions : undefined;
+          return {
+            data: messageResponse(
+              JSON.stringify({
+                decisions: [{ id, action: "approve", reasons: [] }],
+              }),
+            ),
+          };
+        },
+      },
+    };
+
+    await runPlanReview({
+      placementQueue: [entry],
+      state: emptyAlphaState(100),
+      orderbooks: new Map([[APP_ID, twoSidedBook()]]),
+      markets: new Map([[APP_ID, market()]]),
+      config: testConfig(),
+      responsesClient: client,
+      skipHealthCheck: true,
+      model: "test-model",
+      reasoningEffort: "low",
+      operatorPreferences: "Prioritise reward-lane entries over spread when both look sound.",
+    });
+
+    assert.match(capturedInstructions ?? "", /OPERATOR PREFERENCES/);
+    assert.match(capturedInstructions ?? "", /Prioritise reward-lane entries/);
+    assert.match(capturedInstructions ?? "", /You are Ghillie's plan reviewer/);
   });
 });

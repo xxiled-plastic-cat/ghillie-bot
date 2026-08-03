@@ -57,6 +57,7 @@ Alpha **bot state** is on DigitalOcean Spaces (or local FS fallback). Remaining 
 - [x] Wire a decide / review agent into the Alpha live loop using the zs-proxy client
   - Host plans quotes; model vetoes/shrinks **reward/spread entry** bids only (`src/alpha/planReview/`)
   - Canonical system prompt: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts)
+  - Optional operator preferences (Spaces `{prefix}/operator-preferences.md` or local `config/operator-preferences.md`) appended at runtime; OS base prompt stays generic
   - Gate: `ALPHA_ENABLE_PLAN_REVIEW` (default false). Fail closed on entries; exits still place.
   - Always tools-off single Responses call (`store: false`); no Amarok tools on the cron place path
 - [x] Paper vs live clarity: paper trader is unwired (no ZeroSignal spend). Live / live-dry-run call review only when the flag is on and entry quotes remain in the placement queue.
@@ -92,7 +93,7 @@ Before shipping any LLM decide / research agent:
 - [ ] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data)
 - [x] Align tool allowlists with Amarok: research tools yes; `amarok_get_execution_quote` host-only — plan-review path uses **no** tools
 - [x] Add golden / fixture tests for prompt + tool schema sanitization where practical (`planReview.test.ts`, `zerosignal.test.ts`)
-- [x] Document prompt ownership (which file is canonical) — plan review prompt lives only in `src/alpha/planReview/prompt.ts`
+- [x] Document prompt ownership (which file is canonical) — plan review base prompt lives in `src/alpha/planReview/prompt.ts`; optional operator prefs via Spaces/local markdown (brownie pattern)
 
 ### 6. Amarok / MCP hardening
 

@@ -51,6 +51,9 @@ function paymentRequest(amount: string, path = "/v1/alpha/opportunities") {
 test("rejects payment above Amarok endpoint ceiling", async () => {
   await assert.rejects(() => builder().build(paymentRequest("50001")), /endpoint ceiling/);
   await assert.rejects(() => builder().build(paymentRequest("250001", "/v1/alpha/scan")), /endpoint ceiling/);
+  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/rewards")), /endpoint ceiling/);
+  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/spreads")), /endpoint ceiling/);
+  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/parity")), /endpoint ceiling/);
 });
 
 test("rejects unexpected resource origin", async () => {
@@ -64,6 +67,15 @@ test("builds payment signature for opportunities path", async () => {
   assert.ok(built.paymentSignature.length > 20);
   assert.equal(built.receipt.resourcePath, "/v1/alpha/opportunities");
   assert.equal(built.receipt.amountBaseUnits, "50000");
+});
+
+test("builds payment signature for lane-ranking paths", async () => {
+  for (const path of ["/v1/alpha/rewards", "/v1/alpha/spreads", "/v1/alpha/parity"]) {
+    const built = await builder().build(paymentRequest("50000", path));
+    assert.ok(built.paymentSignature.length > 20);
+    assert.equal(built.receipt.resourcePath, path);
+    assert.equal(built.receipt.amountBaseUnits, "50000");
+  }
 });
 
 test("encodePaymentNote includes path and nonce", () => {
