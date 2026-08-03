@@ -6,6 +6,7 @@ import {
   assertZsResponseRequest,
   buildReplayInput,
   extractFunctionCalls,
+  finalResponseFromStream,
   formatInferenceCostLine,
   normalizeAgentResponse,
   parseInferenceCostFromHeaders,
@@ -14,6 +15,7 @@ import {
   runResponsesToolLoop,
   selectAgentResearchTools,
   summarizeInferenceCosts,
+  withStreamTrue,
   zsProxyHealthzUrl,
   type ResponsesClient,
 } from "./index.js";
@@ -220,17 +222,21 @@ test("runResponsesToolLoop replays transcript and never sends previous_response_
   assert.equal(creates.length, 2);
   const first = creates[0] as {
     store?: boolean;
+    stream?: boolean;
     previous_response_id?: string;
   };
   assert.equal(first.store, false);
+  assert.equal(first.stream, true);
   assert.equal(first.previous_response_id, undefined);
 
   const followUp = creates[1] as {
     store?: boolean;
+    stream?: boolean;
     previous_response_id?: string;
     input: unknown;
   };
   assert.equal(followUp.store, false);
+  assert.equal(followUp.stream, true);
   assert.equal(followUp.previous_response_id, undefined);
   assert.ok(Array.isArray(followUp.input));
   const input = followUp.input as Array<Record<string, unknown>>;
@@ -249,6 +255,40 @@ test("buildReplayInput appends optional repair user message", () => {
   const input = buildReplayInput("start", [{ type: "function_call" }], "repair");
   assert.deepEqual(input[0], { role: "user", content: "start" });
   assert.deepEqual(input.at(-1), { role: "user", content: "repair" });
+});
+
+test("withStreamTrue forces stream: true and finalResponseFromStream drains SSE", async () => {
+  assert.deepEqual(withStreamTrue({ model: "m", store: false }), {
+    model: "m",
+    store: false,
+    stream: true,
+  });
+
+  const completed = {
+    id: "resp-1",
+    output: [{ type: "message", content: [] }],
+    output_text: "done",
+  };
+  async function* events() {
+    yield { type: "response.created", response: { id: "resp-1" } };
+    yield { type: "response.output_text.delta", delta: "do" };
+    yield { type: "response.completed", response: completed };
+  }
+
+  assert.deepEqual(await finalResponseFromStream(events()), completed);
+  assert.deepEqual(await finalResponseFromStream(completed), completed);
+  await assert.rejects(
+    () =>
+      finalResponseFromStream(
+        (async function* () {
+          yield {
+            type: "response.failed",
+            response: { error: { message: "operator down" } },
+          };
+        })(),
+      ),
+    /operator down/,
+  );
 });
 
 test("extractFunctionCalls ignores non-call output", () => {

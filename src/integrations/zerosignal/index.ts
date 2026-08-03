@@ -21,8 +21,10 @@ export {
   buildReplayInput,
   extractFunctionCalls,
   extractOutputText,
+  finalResponseFromStream,
   normalizeAgentResponse,
   recordInferenceCharge,
+  withStreamTrue,
 } from "./responses.js";
 export type {
   FunctionCallItem,

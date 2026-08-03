@@ -155,9 +155,11 @@ High-impact settings:
 
 ## Persistence model (paper mode)
 
-Paper mode state is persisted in Postgres `bot_states` JSONB under key:
+Paper mode state is persisted via the shared Spaces / local FS bot-state store (`src/integrations/storage/botStateStore.ts`) under key:
 
 - `POLY_PAPER_STATE_KEY` (default `poly-paper`)
+
+Object path: `{DO_SPACES_PREFIX}/bot-states/{POLY_PAPER_STATE_KEY}.json` (or the same layout under `BOT_STATE_DATA_DIR`).
 
 Implementation: `src/polymarket/polyPaperStateStore.ts`
 
@@ -177,28 +179,9 @@ Each tracks:
 
 This makes it easy to build comparative dashboards without re-running simulation logic.
 
-## Persistence model (market status)
+## Market lifecycle (no persisted status table)
 
-Scanner market lifecycle snapshots are also persisted in Postgres table:
-
-- `polymarket_market_status`
-
-Implementation:
-
-- `src/polymarket/polyMarketStatusStore.ts`
-- Called automatically from `loadPolyScan()` in `src/polymarket/polyMarketScanner.ts`
-
-Key fields:
-
-- `condition_id` (PK)
-- `market_id`, `market_slug`, `event_id`, `event_slug`, `title`
-- `status`, `is_live`, `is_resolved`, `is_closed`
-- `end_date`, `last_seen_at`
-
-Behavior mirrors the Alpha lifecycle cache:
-
-- previously inactive/resolved/closed markets are filtered out of scans
-- status rows are upserted each scan and keep terminal states sticky
+Scanner filters markets in memory (`isLive && !isResolved && !closed`). There is no `polymarket_market_status` Postgres table.
 
 ## Practical integration pattern for the other agent
 
@@ -207,7 +190,7 @@ Behavior mirrors the Alpha lifecycle cache:
    - `/markets` from merged `PolyMarket[]`
    - `/orderbooks` from token maps
    - `/candidates/rewards`, `/candidates/spread`, `/candidates/parity`
-3. For paper analytics, read `bot_states` row for `POLY_PAPER_STATE_KEY`.
+3. For paper analytics, read the Spaces/local bot-state JSON for `POLY_PAPER_STATE_KEY`.
 4. Keep lane toggles and thresholds in env so tuning does not require code edits.
 
 ## Known behavior notes
@@ -220,4 +203,4 @@ Behavior mirrors the Alpha lifecycle cache:
   - `closed=true` is treated as the strongest ended/resolved signal.
   - `resolved` is used when present, but may be missing from some payloads.
   - `endDate`/`endDateIso` is used as a time-based fallback.
-  - Markets derived as non-live are filtered out of active scan outputs, and upserted into `polymarket_market_status` as inactive.
+  - Markets derived as non-live are filtered out of active scan outputs.

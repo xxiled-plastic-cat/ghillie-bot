@@ -31,6 +31,7 @@ import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
 import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
 import { parseExecutionQuotePayload, signAndSubmitUnsignedGroup } from "../integrations/algorand/submitUnsigned.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
+import { runPlanReview } from "./planReview/index.js";
 
 const CONTROLLED_UNDERWATER_EXIT_REASON = "controlled underwater exit";
 
@@ -1482,6 +1483,25 @@ export async function runLiveTick(
   }
   for (const exit of laneQueues.exits.slice(pendingExitSlots)) {
     pushQuote(exit);
+  }
+
+  if (config.enablePlanReview) {
+    const review = await runPlanReview({
+      placementQueue,
+      state,
+      orderbooks: scan.orderbooks,
+      markets: marketByAppId,
+      config,
+      walletUsdc: walletUsdcBalanceUsd,
+    });
+    placementQueue.length = 0;
+    placementQueue.push(...review.placementQueue);
+    actions.push(...review.actions);
+    logLiveMemory("after_plan_review", {
+      reviewed: review.reviewed,
+      placementQueue: placementQueue.length,
+      actions: actions.length,
+    });
   }
 
   const selectedRewardContractsByMarket = rewardContractsByMarket(state);

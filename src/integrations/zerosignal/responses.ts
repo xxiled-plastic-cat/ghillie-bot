@@ -101,15 +101,66 @@ export function buildReplayInput(
   return input;
 }
 
+/** Force `stream: true` on every zs-proxy Responses request (brownie pattern). */
+export function withStreamTrue(request: unknown): Record<string, unknown> {
+  if (request !== null && typeof request === "object" && !Array.isArray(request)) {
+    return { ...(request as Record<string, unknown>), stream: true };
+  }
+  return { stream: true, input: request };
+}
+
+/**
+ * Drain a Responses SSE stream to the completed Response body.
+ * zs-proxy / operator chains need streaming so idle read timeouts do not fire
+ * while the model is still generating.
+ */
+export async function finalResponseFromStream(eventStream: unknown): Promise<unknown> {
+  if (!isAsyncIterable(eventStream)) {
+    return eventStream;
+  }
+
+  let completed: unknown;
+  let failedMessage: string | undefined;
+
+  for await (const event of eventStream) {
+    if (!event || typeof event !== "object") {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    if (record.type === "response.completed" && record.response !== undefined) {
+      completed = record.response;
+      continue;
+    }
+    if (record.type === "response.failed") {
+      failedMessage = formatStreamFailure(record);
+      continue;
+    }
+    if (record.type === "error") {
+      failedMessage = formatStreamFailure(record);
+    }
+  }
+
+  if (completed !== undefined) {
+    return completed;
+  }
+  if (failedMessage) {
+    throw new Error(`ZeroSignal stream failed: ${failedMessage}`);
+  }
+  throw new Error(
+    "ZeroSignal stream ended without response.completed (enable stream: true end-to-end)",
+  );
+}
+
 /** Normalize OpenAI SDK / test mocks into body + optional HTTP headers. */
 export async function createAgentResponse(
   openai: ResponsesClient,
   request: unknown,
 ): Promise<{ data: unknown; headers?: Headers }> {
   assertZsResponseRequest(request);
-  const result = await openai.responses.create(request);
+  // stream: true is required for zs-proxy — see withStreamTrue / finalResponseFromStream.
+  const result = await openai.responses.create(withStreamTrue(request));
   if (!result || typeof result !== "object") {
-    return { data: result };
+    return { data: await finalResponseFromStream(result) };
   }
   const record = result as {
     data?: unknown;
@@ -117,21 +168,22 @@ export async function createAgentResponse(
     headers?: Headers | Record<string, string>;
   };
   if ("data" in record && record.data !== undefined) {
+    const data = await finalResponseFromStream(record.data);
     if (record.response?.headers) {
-      return { data: record.data, headers: record.response.headers };
+      return { data, headers: record.response.headers };
     }
     if (record.headers) {
       return {
-        data: record.data,
+        data,
         headers:
           record.headers instanceof Headers
             ? record.headers
             : headersFromRecord(record.headers),
       };
     }
-    return { data: record.data };
+    return { data };
   }
-  return { data: result };
+  return { data: await finalResponseFromStream(result) };
 }
 
 export function recordInferenceCharge(
@@ -148,6 +200,7 @@ export function recordInferenceCharge(
  * Hard rules for every zs-proxy Responses call:
  * - `store: false`
  * - never `previous_response_id`
+ * (`stream: true` is forced by withStreamTrue / createAgentResponse)
  */
 export function assertZsResponseRequest(request: unknown): void {
   if (!request || typeof request !== "object") {
@@ -162,6 +215,33 @@ export function assertZsResponseRequest(request: unknown): void {
       "ZeroSignal responses.create must not send previous_response_id; replay conversation client-side",
     );
   }
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Symbol.asyncIterator in value &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+function formatStreamFailure(record: Record<string, unknown>): string {
+  const response = record.response;
+  if (response && typeof response === "object") {
+    const error = (response as { error?: unknown }).error;
+    if (error && typeof error === "object") {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim().length > 0) {
+        return message;
+      }
+    }
+  }
+  const message = record.message;
+  if (typeof message === "string" && message.trim().length > 0) {
+    return message;
+  }
+  return JSON.stringify(record);
 }
 
 function headersFromRecord(record: Record<string, string>): Headers {

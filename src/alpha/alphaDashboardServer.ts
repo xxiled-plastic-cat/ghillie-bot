@@ -3,7 +3,6 @@ import { createServer } from "node:http";
 import type { ServerResponse } from "node:http";
 
 import { buildAlphaDashboardSnapshot } from "./alphaDashboardData.js";
-import { closeDatabase } from "../db.js";
 
 dotenv.config();
 
@@ -111,8 +110,7 @@ async function main(): Promise<void> {
   });
 
   const shutdown = async () => {
-    server.close(async () => {
-      await closeDatabase();
+    server.close(() => {
       process.exit(0);
     });
   };

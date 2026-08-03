@@ -7,6 +7,8 @@ import {
 } from "./config.js";
 import {
   createAgentResponse,
+  finalResponseFromStream,
+  withStreamTrue,
   type ResponsesClient,
 } from "./responses.js";
 
@@ -19,6 +21,9 @@ export type ZeroSignalClient = {
 /**
  * OpenAI SDK pointed at zs-proxy. Admission is the wallet seal — the API key
  * is a non-empty placeholder only.
+ *
+ * Always streams (`stream: true`) and drains SSE to `response.completed` so
+ * zs-proxy / operator read timeouts do not kill slow inference (brownie pattern).
  */
 export function createZeroSignalClient(
   environment: NodeJS.ProcessEnv = process.env,
@@ -31,9 +36,11 @@ export function createZeroSignalClient(
   const responses: ResponsesClient = {
     responses: {
       async create(request: unknown) {
-        const { data, response } = await openai.responses
-          .create(request as never)
+        const body = withStreamTrue(request);
+        const { data: eventStream, response } = await openai.responses
+          .create(body as never)
           .withResponse();
+        const data = await finalResponseFromStream(eventStream);
         return { data, response };
       },
     },

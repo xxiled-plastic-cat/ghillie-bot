@@ -53,6 +53,12 @@ fi
 export PROXY_ZS_PROXY_PAYER_ADDR
 echo "ZeroSignal proxy payer: $PROXY_ZS_PROXY_PAYER_ADDR"
 
+# Brownie pattern: default privacy/relay OFF so inference goes direct to the
+# model operator (avoids flaky *.belt.algo.xyz CDN 502/504s). Operators can
+# still opt in with PROXY_ZS_PRIVACY=true.
+export PROXY_ZS_PRIVACY="${PROXY_ZS_PRIVACY:-false}"
+echo "ZeroSignal privacy/relay: ${PROXY_ZS_PRIVACY} (false = direct to operator)"
+
 # Opt into the ZeroSignal escrow app and fund the prepaid ticket-MBR pool
 # (~1.15 ALGO for 10 slots). Without this, reserves fail with payer_not_opted_in
 # (often misreported as operators_busy / 503).

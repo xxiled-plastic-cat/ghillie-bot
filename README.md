@@ -19,8 +19,18 @@ MAX_DAILY_X402_BASE_UNITS=5000000
 ALPHA_WALLET_MNEMONIC="word1 ... word25"
 ALPHA_ENABLE_LIVE_TRADING=true
 ALPHA_CONFIRM_RISK=true
-DATABASE_URL=
+# Bot state: DigitalOcean Spaces (preferred) or local FS fallback
+DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
+DO_SPACES_BUCKET=
+DO_SPACES_KEY=
+DO_SPACES_SECRET=
 ```
+
+### Bot state (Spaces)
+
+Alpha PnL / positions / orders live in a JSON object on DigitalOcean Spaces (same pattern as brownie-bot), key `{DO_SPACES_PREFIX}/bot-states/{ALPHA_STATE_KEY}.json` (default `ghillie-bot/bot-states/alpha.json`). If Spaces env is omitted, state is written under `BOT_STATE_DATA_DIR` (default `data/bot-states`) with the same key layout. Polymarket paper state uses the same store under `POLY_PAPER_STATE_KEY` (default `poly-paper`).
+
+No Postgres / Supabase is required.
 
 `ALPHA_API_KEY` is still used for Alpha SDK **venue ops** Amarok does not expose yet (wallet open-order sync). Research and limit placement go through Amarok MCP with per-call x402 payments from the agent wallet.
 
@@ -34,7 +44,7 @@ The image starts zs-proxy on loopback, then runs `npm run alpha:cron:live`. Set 
 
 ```bash
 cp .env.example .env
-# set ALPHA_WALLET_MNEMONIC, DATABASE_URL, ZEROSIGNAL_KEYSTORE_PASSPHRASE, …
+# set ALPHA_WALLET_MNEMONIC, DO_SPACES_*, ZEROSIGNAL_KEYSTORE_PASSPHRASE, …
 docker compose up -d --build
 # or:
 npm run docker:build
@@ -44,7 +54,7 @@ docker run --rm --env-file .env \
   ghillie-bot
 ```
 
-`docker/entrypoint.sh` imports `ALPHA_WALLET_MNEMONIC` into zs-proxy, runs `zs-proxy fund`, waits for `/healthz`, then starts the cron worker. Spend caps default from [`config/zs-proxy.yaml`](./config/zs-proxy.yaml) (override with `PROXY_SPEND_*`). Relay privacy defaults **off** (`zs.privacy: false`; override with `PROXY_ZS_PRIVACY=true`).
+`docker/entrypoint.sh` imports `ALPHA_WALLET_MNEMONIC` into zs-proxy, runs `zs-proxy fund`, waits for `/healthz`, then starts the cron worker. Spend caps default from [`config/zs-proxy.yaml`](./config/zs-proxy.yaml) (override with `PROXY_SPEND_*`). Relay privacy defaults **off** (`zs.privacy: false` + `PROXY_ZS_PRIVACY=false`; override with `PROXY_ZS_PRIVACY=true`) so inference talks straight to the model operator and skips flaky `*.belt.algo.xyz` hops.
 
 ```bash
 # Safe connectivity smoke (LLM + one Amarok research call)
@@ -61,18 +71,22 @@ npm run docker:once
 # macOS: brew install txnlab/tap/zs-proxy
 printf '%s\n' "$ALPHA_WALLET_MNEMONIC" | zs-proxy wallet import --stdin --yes --force
 zs-proxy fund --wait
+# Must pass config so zs.privacy: false (no relay) is applied
 zs-proxy proxy start --config config/zs-proxy.yaml
 ```
+
+Transport privacy defaults to **off** (`zs.privacy: false`) so calls go direct to the model operator. To re-enable relays: `PROXY_ZS_PRIVACY=true` or set `zs.privacy: true` in the config.
 
 ```env
 OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 OPEN_AI_API_KEY=zerosignal
 OPENAI_MODEL=glm-5.2
 OPENAI_REASONING_EFFORT=medium
-AI_MODE=full
+PROXY_ZS_PRIVACY=false
+AI_MODE=lite
 ```
 
-`OPEN_AI_API_KEY` is a placeholder; admission is the on-chain wallet seal. Multi-turn agents always set `store: false` and replay conversation client-side (never `previous_response_id`).
+`OPEN_AI_API_KEY` is a placeholder; admission is the on-chain wallet seal. Multi-turn agents always set `store: false`, use **`stream: true`** (drained to `response.completed` so zs-proxy read timeouts do not kill slow inference), and replay conversation client-side (never `previous_response_id`).
 
 Smoke (spends ZeroSignal + one Amarok x402 research call; host zs-proxy must already be running):
 
@@ -132,7 +146,11 @@ npm run alpha:cron:live:once
 For DigitalOcean App Platform: build from the root `Dockerfile`, leave the run command empty (entrypoint defaults to `alpha:cron:live`), and set:
 
 ```env
-DATABASE_URL=
+DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
+DO_SPACES_BUCKET=
+DO_SPACES_KEY=
+DO_SPACES_SECRET=
+DO_SPACES_PREFIX=ghillie-bot
 AMAROK_MCP_URL=https://amarok-mcp.compx.io/mcp
 MAX_DAILY_X402_BASE_UNITS=5000000
 ALPHA_WALLET_MNEMONIC=

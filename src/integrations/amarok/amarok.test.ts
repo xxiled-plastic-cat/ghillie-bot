@@ -6,7 +6,7 @@ import algosdk from "algosdk";
 import { AlgorandPaymentBuilder, encodePaymentNote } from "./payment.js";
 import { walletFromMnemonic } from "./wallet.js";
 import { parseToolPayload } from "./client.js";
-import { parseExecutionQuotePayload } from "../algorand/submitUnsigned.js";
+import { parseExecutionQuotePayload, regroupUnsignedTransactions } from "../algorand/submitUnsigned.js";
 import { scanFromAmarok } from "./adapters.js";
 
 const network = "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
@@ -106,6 +106,39 @@ test("parseExecutionQuotePayload reads nested group.unsignedTxnsBase64 (live Ama
     ],
   });
   assert.deepEqual(parsed.unsignedTxnsBase64, ["qqqq", "wwww"]);
+});
+
+test("regroupUnsignedTransactions repairs mismatched Amarok group digests", () => {
+  const account = algosdk.generateAccount();
+  const params = { ...fixedSuggestedParams, flatFee: true, fee: 1_000n };
+  const a = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+    sender: account.addr,
+    receiver: account.addr,
+    amount: 1,
+    suggestedParams: params,
+  });
+  const b = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+    sender: account.addr,
+    receiver: account.addr,
+    amount: 2,
+    suggestedParams: params,
+  });
+  const [correctA, correctB] = algosdk.assignGroupID([a, b]);
+  const correctGroup = Buffer.from(correctA.group!);
+
+  // Simulate Amarok baking a wrong group id onto otherwise-valid unsigned txns.
+  const wrongGroup = new Uint8Array(32).fill(7);
+  correctA.group = wrongGroup;
+  correctB.group = wrongGroup;
+  const encoded = [correctA, correctB].map((txn) =>
+    Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString("base64"),
+  );
+
+  const repaired = regroupUnsignedTransactions(encoded);
+  assert.equal(repaired.length, 2);
+  assert.ok(repaired[0].group);
+  assert.ok(Buffer.from(repaired[0].group!).equals(correctGroup));
+  assert.ok(Buffer.from(repaired[1].group!).equals(correctGroup));
 });
 
 test("scanFromAmarok adapts markets and books", () => {

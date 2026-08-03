@@ -1,5 +1,7 @@
 import algosdk from "algosdk";
 
+import type { ZeroSignalReasoningEffort } from "../integrations/zerosignal/config.js";
+
 export type AlphaMode = "scan" | "paper" | "live-dry-run" | "live";
 
 export type AlphaConfig = {
@@ -110,6 +112,13 @@ export type AlphaConfig = {
   paperStartingBalanceUsd: number;
   enableLiveTrading: boolean;
   confirmRisk: boolean;
+  /**
+   * When true, reward/spread entry quotes in the live placement queue are
+   * sanity-checked by ZeroSignal before place. Inventory exits skip review.
+   */
+  enablePlanReview: boolean;
+  /** Override OPENAI_REASONING_EFFORT for plan review only. */
+  planReviewReasoningEffort?: ZeroSignalReasoningEffort;
   walletAddress?: string;
   walletMnemonic?: string;
   stateKey: string;
@@ -140,6 +149,12 @@ function readCompetition(key: string, fallback: AlphaConfig["maxRewardCompetitio
   const raw = process.env[key]?.toLowerCase();
   if (raw === "low" || raw === "medium" || raw === "high") return raw;
   return fallback;
+}
+
+function readPlanReviewReasoningEffort(): ZeroSignalReasoningEffort | undefined {
+  const raw = process.env.ALPHA_PLAN_REVIEW_REASONING_EFFORT?.toLowerCase();
+  if (raw === "low" || raw === "medium" || raw === "high") return raw;
+  return undefined;
 }
 
 export function readAlphaConfig(): AlphaConfig {
@@ -252,6 +267,8 @@ export function readAlphaConfig(): AlphaConfig {
     paperStartingBalanceUsd: readNumber("ALPHA_PAPER_STARTING_BALANCE_USD", 50),
     enableLiveTrading: readBool("ALPHA_ENABLE_LIVE_TRADING", false),
     confirmRisk: readBool("ALPHA_CONFIRM_RISK", false),
+    enablePlanReview: readBool("ALPHA_ENABLE_PLAN_REVIEW", false),
+    planReviewReasoningEffort: readPlanReviewReasoningEffort(),
     walletAddress: process.env.ALPHA_WALLET_ADDRESS || derivedWalletAddress,
     walletMnemonic,
     stateKey: process.env.ALPHA_STATE_KEY || "alpha",

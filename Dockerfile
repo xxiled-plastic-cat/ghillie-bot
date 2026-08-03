@@ -42,7 +42,6 @@ COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/alpha-dashboard/package.json ./apps/alpha-dashboard/
 COPY src ./src
-COPY drizzle ./drizzle
 COPY tsconfig.json ./tsconfig.json
 COPY config/zs-proxy.yaml /app/config/zs-proxy.yaml
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
@@ -55,6 +54,8 @@ ENV HOME=/home/node
 ENV ZEROSIGNAL_KEYRING_BACKEND=file
 ENV OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 ENV OPEN_AI_API_KEY=zerosignal
+# Direct to model operator (no *.belt.algo.xyz relay). Override with PROXY_ZS_PRIVACY=true.
+ENV PROXY_ZS_PRIVACY=false
 ENV ALPHA_HEALTH_PORT=8788
 EXPOSE 8788
 ENTRYPOINT ["/app/docker/entrypoint.sh"]

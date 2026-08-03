@@ -44,12 +44,22 @@ Wire inference like [brownie-bot](https://github.com/compx-labs): **ZeroSignal v
 
 ## Recommended next steps
 
+### 0. Persistence — market status off Postgres, then drop Supabase
+
+Alpha **bot state** is on DigitalOcean Spaces (or local FS fallback). Remaining Postgres usage:
+
+- [x] Move `alpha_market_status` (and polymarket market-status if still used) off Postgres — dropped entirely (in-memory Amarok/API filters only); no Spaces market-status cache
+- [x] Remove Supabase/Postgres from the project: `DATABASE_URL`, Drizzle `bot_states` / market-status schema + migrations, `src/db.ts` callers; poly paper state now uses Spaces/local `botStateStore`
+- [x] Confirm DO deploy no longer needs a Supabase pooler URL (operator: drop `DATABASE_URL` from App Platform env; delete remote tables out of band)
+
 ### 1. ZeroSignal agent in the live loop
 
-Infra is ready; the decide / review path is still unwired.
-
-- [ ] Wire a decide / review agent into the Alpha live loop using the zs-proxy client
-- [ ] Paper vs live clarity once the agent exists (paper must not spend x402 unintentionally — or document that research still pays)
+- [x] Wire a decide / review agent into the Alpha live loop using the zs-proxy client
+  - Host plans quotes; model vetoes/shrinks **reward/spread entry** bids only (`src/alpha/planReview/`)
+  - Canonical system prompt: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts)
+  - Gate: `ALPHA_ENABLE_PLAN_REVIEW` (default false). Fail closed on entries; exits still place.
+  - Always tools-off single Responses call (`store: false`); no Amarok tools on the cron place path
+- [x] Paper vs live clarity: paper trader is unwired (no ZeroSignal spend). Live / live-dry-run call review only when the flag is on and entry quotes remain in the placement queue.
 
 ### 2. Naming leftovers
 
@@ -77,12 +87,12 @@ Infra is ready; the decide / review path is still unwired.
 
 Before shipping any LLM decide / research agent:
 
-- [ ] Inventory every system / developer / tool prompt
-- [ ] Review for: custody boundaries (no mnemonic / `paymentSignature` / execution tools in model context)
+- [x] Inventory every system / developer / tool prompt — plan review: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts); zs smoke: [`src/cli/zsSmoke.ts`](../src/cli/zsSmoke.ts)
+- [x] Review for: custody boundaries (no mnemonic / `paymentSignature` / execution tools in model context) — plan review payload is host-built quotes/books only; `amarok_get_execution_quote` stays host-only
 - [ ] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data)
-- [ ] Align tool allowlists with Amarok: research tools yes; `amarok_get_execution_quote` host-only
-- [ ] Add golden / fixture tests for prompt + tool schema sanitization where practical (beyond `zerosignal.test.ts`)
-- [ ] Document prompt ownership (which file is canonical) in CONTRIBUTING or `docs/prompts.md`
+- [x] Align tool allowlists with Amarok: research tools yes; `amarok_get_execution_quote` host-only — plan-review path uses **no** tools
+- [x] Add golden / fixture tests for prompt + tool schema sanitization where practical (`planReview.test.ts`, `zerosignal.test.ts`)
+- [x] Document prompt ownership (which file is canonical) — plan review prompt lives only in `src/alpha/planReview/prompt.ts`
 
 ### 6. Amarok / MCP hardening
 
@@ -112,8 +122,8 @@ Before shipping any LLM decide / research agent:
 ## Suggested order
 
 1. Stabilize Amarok API origin (522s) + e2e paid/place smoke
-2. Wire ZeroSignal decide / review into the live loop
-3. Prompt review + schema sanitization tests (before any agent ships)
+2. ~~Wire ZeroSignal decide / review into the live loop~~ (done — enable `ALPHA_ENABLE_PLAN_REVIEW`)
+3. Finish remaining prompt review notes (risk language) if shipping publicly
 4. MIT `LICENSE` + `CONTRIBUTING.md` + README OSS section
 5. Naming leftovers (GitHub rename, log prefixes, dashboard branding)
 6. Lint / CI / `QUICKSTART.md` polish

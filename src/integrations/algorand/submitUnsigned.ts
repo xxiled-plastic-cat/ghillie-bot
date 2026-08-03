@@ -120,23 +120,34 @@ function extractCreatedAppId(confirmation: Record<string, unknown>): number | un
   return undefined;
 }
 
-export async function signAndSubmitUnsignedGroup(params: {
+/**
+ * Amarok sometimes returns unsigned groups whose baked-in `group` digest does
+ * not match algosdk/algod's hash of the same txn bodies (→ "incomplete group").
+ * Always clear + re-assign before signing so the submitted set is self-consistent.
+ */
+export function regroupUnsignedTransactions(unsignedTxnsBase64: string[]): algosdk.Transaction[] {
+  const decoded = unsignedTxnsBase64.map((encoded) =>
+    algosdk.decodeUnsignedTransaction(Buffer.from(encoded, "base64")),
+  );
+  for (const txn of decoded) {
+    txn.group = undefined;
+  }
+  return algosdk.assignGroupID(decoded);
+}
+
+export function signUnsignedGroup(params: {
   wallet: AgentWallet;
-  algodServer: string;
-  algodToken?: string;
   unsignedTxnsBase64: string[];
   userSignIndexes?: number[];
-  knownEscrowAppId?: number;
-}): Promise<UnsignedSubmitResult> {
-  const algod = new algosdk.Algodv2(params.algodToken ?? "", params.algodServer, "");
+}): Uint8Array[] {
   const signIndexes = new Set(
     params.userSignIndexes && params.userSignIndexes.length > 0
       ? params.userSignIndexes
       : params.unsignedTxnsBase64.map((_, index) => index),
   );
+  const grouped = regroupUnsignedTransactions(params.unsignedTxnsBase64);
 
-  const signed: Uint8Array[] = params.unsignedTxnsBase64.map((encoded, index) => {
-    const txn = algosdk.decodeUnsignedTransaction(Buffer.from(encoded, "base64"));
+  return grouped.map((txn, index) => {
     if (!signIndexes.has(index)) {
       throw new Error(`Amarok execution quote left txn index ${index} unsigned without provider signature support`);
     }
@@ -146,6 +157,18 @@ export async function signAndSubmitUnsignedGroup(params: {
     }
     return txn.signTxn(params.wallet.secretKey);
   });
+}
+
+export async function signAndSubmitUnsignedGroup(params: {
+  wallet: AgentWallet;
+  algodServer: string;
+  algodToken?: string;
+  unsignedTxnsBase64: string[];
+  userSignIndexes?: number[];
+  knownEscrowAppId?: number;
+}): Promise<UnsignedSubmitResult> {
+  const algod = new algosdk.Algodv2(params.algodToken ?? "", params.algodServer, "");
+  const signed = signUnsignedGroup(params);
 
   const submitted = (await algod.sendRawTransaction(signed).do()) as { txid?: string; txId?: string };
   const txId = submitted.txid ?? submitted.txId;

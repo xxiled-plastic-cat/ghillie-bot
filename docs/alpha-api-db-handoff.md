@@ -1,10 +1,10 @@
-# Alpha API + DB Handoff for Aggregator/Dashboard Agent
+# Alpha API + state handoff for aggregator/dashboard agents
 
-This doc is a practical handoff for building an Alpha-focused aggregator/dashboard from this repo.
+Practical handoff for building an Alpha-focused aggregator/dashboard from this repo.
 
 ## 1) How to query Alpha API in this project
 
-This project wraps the Alpha SDK in `src/alpha/alphaClient.ts` via `AlphaSdkClient`.
+This project wraps the Alpha SDK in `src/alpha/alphaClient.ts` via `AlphaSdkClient`. Live research scans go through Amarok MCP (`loadAlphaScan()` in `src/alpha/alphaMarketScanner.ts`).
 
 ### Preferred query flow (market aggregation)
 
@@ -15,8 +15,8 @@ This project wraps the Alpha SDK in `src/alpha/alphaClient.ts` via `AlphaSdkClie
    - `client.getLiveMarkets()` for all live markets.
    - `client.getRewardMarkets()` for reward-focused markets.
 4. Merge/dedupe by `marketAppId` (project convention).
-5. Fetch orderbooks per market with bounded concurrency (see `loadAlphaScan()` in `src/alpha/alphaMarketScanner.ts`).
-6. Persist lifecycle status snapshots with `upsertAlphaMarketStatus()` (optional but recommended for operational dashboards).
+5. Fetch orderbooks per market with bounded concurrency (see `loadAlphaScan()` / Amarok adapters).
+6. Derive lifecycle from live API fields + on-chain status (`getMarketResolution` / orderbook `source: "unavailable"`). There is **no** persisted market-status table.
 
 ### Key SDK wrapper methods
 
@@ -76,30 +76,16 @@ await Promise.all(
 );
 ```
 
-## 2) What data is available in the project DB
+## 2) Bot state (Spaces / local FS — not Postgres)
 
-DB access is in `src/db.ts` (Drizzle + Postgres, `DATABASE_URL` required). Schema is in `drizzle/schema.ts`.
+This project does **not** use Supabase/Postgres. Alpha bot state (`loadAlphaState` / `saveAlphaState`) persists via `src/integrations/storage/botStateStore.ts`:
 
-Current tables:
+- DigitalOcean Spaces when `DO_SPACES_*` are set
+- Local filesystem under `BOT_STATE_DATA_DIR` otherwise
 
-1. `bot_states`
-2. `alpha_market_status`
+Object key: `{DO_SPACES_PREFIX}/bot-states/{ALPHA_STATE_KEY}.json` (default `ghillie-bot/bot-states/alpha.json`).
 
-### Table: `bot_states`
-
-Purpose: generic JSONB state store keyed by bot/module.
-
-Columns:
-
-- `key` (varchar, PK)
-- `state` (jsonb, required)
-- `created_at` (timestamptz)
-- `updated_at` (timestamptz)
-
-Alpha state key is usually `alpha` (`ALPHA_STATE_KEY` in config).
-This table is also reused by other modules (e.g. Polymarket) via different keys.
-
-#### Alpha JSON shape stored in `bot_states.state`
+### Alpha JSON shape
 
 From `AlphaBotState` (`src/alpha/alphaTypes.ts`), useful dashboard fields include:
 
@@ -117,92 +103,18 @@ From `AlphaBotState` (`src/alpha/alphaTypes.ts`), useful dashboard fields includ
 - Timestamp:
   - `lastUpdated`
 
-### Table: `alpha_market_status`
+Read via `loadAlphaState()` or the dashboard API (`npm run alpha:dashboard`).
 
-Purpose: lightweight lifecycle/state cache for known Alpha markets.
-
-Columns:
-
-- `market_app_id` (bigint, PK)
-- `market_id` (text)
-- `slug` (text)
-- `status` (text)
-- `is_live` (boolean)
-- `is_resolved` (boolean)
-- `is_closed` (boolean)
-- `end_ts` (bigint)
-- `close_time` (timestamptz)
-- `last_seen_at` (timestamptz)
-- `created_at` / `updated_at` (timestamptz)
-
-Index:
-
-- `alpha_market_status_lifecycle_idx` on (`is_live`, `is_resolved`, `is_closed`)
-
-### How these DB tables are used by Alpha flows
-
-- `bot_states`:
-  - read in `loadAlphaState()`
-  - upsert in `saveAlphaState()`
-- `alpha_market_status`:
-  - upsert from scan results and orderbook-derived transitions
-  - used to filter out inactive/resolved markets on future scans
-  - used by cleanup/reporting utilities to list resolved/known markets
-
-## 3) Useful SQL for dashboard/aggregator
-
-### Load latest Alpha bot state JSON
-
-```sql
-select key, state, updated_at
-from bot_states
-where key = 'alpha';
-```
-
-### Read active vs closed market counts
-
-```sql
-select
-  sum(case when is_live then 1 else 0 end) as live_markets,
-  sum(case when is_resolved then 1 else 0 end) as resolved_markets,
-  sum(case when is_closed then 1 else 0 end) as closed_markets
-from alpha_market_status;
-```
-
-### List recent non-live markets (good for de-listing UI)
-
-```sql
-select market_app_id, market_id, slug, status, is_live, is_resolved, is_closed, last_seen_at
-from alpha_market_status
-where is_live = false
-order by last_seen_at desc
-limit 200;
-```
-
-### Pull headline metrics from Alpha JSONB
-
-```sql
-select
-  state->>'lastUpdated' as state_last_updated,
-  (state->>'cash')::numeric as cash,
-  (state->>'realisedPnl')::numeric as realised_pnl,
-  (state->>'unrealisedPnl')::numeric as unrealised_pnl,
-  (state->>'totalPnl')::numeric as total_pnl,
-  (state->>'estimatedRewardsUsd')::numeric as estimated_rewards_usd
-from bot_states
-where key = 'alpha';
-```
-
-## 4) Practical dashboard build notes
+## 3) Practical dashboard build notes
 
 - For market cards:
   - combine live markets + reward markets
-  - attach current orderbook snapshot and lifecycle status
+  - attach current orderbook snapshot and on-chain lifecycle status
 - For wallet view:
   - use live Alpha API calls (`getPositions`, `getWalletOpenOrders`, balances)
-  - do not rely on `bot_states` alone for wallet truth
+  - do not rely on bot state alone for wallet truth
 - For bot-ops view:
-  - use `bot_states.state` + `alpha_market_status`
+  - use Spaces/local bot state JSON + live API/chain status
 - Treat `reward` fields as optional:
   - `dailyRewardsUsd`, `maxRewardSpreadCents`, `minContracts`, etc. can be missing
   - render unknown gracefully instead of coercing to zero
