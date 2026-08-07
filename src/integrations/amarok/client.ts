@@ -18,7 +18,7 @@ export interface ToolCaller {
 
 export class McpSdkToolCaller implements ToolCaller {
   private readonly client = new Client({
-    name: "nuckelavee-alpha",
+    name: "ghillie-bot",
     version: "1.0.0",
   });
   private connected = false;

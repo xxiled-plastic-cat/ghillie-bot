@@ -102,12 +102,13 @@ async function callPlanReviewModel(input: {
 }
 
 /**
- * Review reward/spread entry quotes in the placement queue via ZeroSignal.
+ * Always review reward/spread entry quotes in the placement queue via ZeroSignal.
  * Inventory exits pass through. Fail closed: drop entries on any review failure.
  */
 export async function runPlanReview(options: RunPlanReviewOptions): Promise<PlanReviewAgentResult> {
   const entryQuotes = options.placementQueue.filter(isEntryQuote);
-  if (!options.config.enablePlanReview || entryQuotes.length === 0) {
+  // Always review entry bids/asks via ZeroSignal. Inventory exits pass through.
+  if (entryQuotes.length === 0) {
     return {
       placementQueue: options.placementQueue,
       actions: [],
@@ -172,7 +173,7 @@ export async function runPlanReview(options: RunPlanReviewOptions): Promise<Plan
     response = parsePlanReviewResponse(text);
   } catch (error) {
     failReason = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-plan-review] failed closed: ${failReason}`);
+    console.error(`[ghillie-plan-review] failed closed: ${failReason}`);
   }
 
   const applied = applyPlanReviewDecisions({

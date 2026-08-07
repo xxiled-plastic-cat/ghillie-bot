@@ -58,31 +58,32 @@ Alpha **bot state** is on DigitalOcean Spaces (or local FS fallback). Remaining 
   - Host plans quotes; model vetoes/shrinks **reward/spread entry** bids only (`src/alpha/planReview/`)
   - Canonical system prompt: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts)
   - Optional operator preferences (Spaces `{prefix}/operator-preferences.md` or local `config/operator-preferences.md`) appended at runtime; OS base prompt stays generic
-  - Gate: `ALPHA_ENABLE_PLAN_REVIEW` (default false). Fail closed on entries; exits still place.
+  - Non-empty prefs also switch host research (`loadAlphaScan`) to lane MCP tools; missing prefs keep scan + opportunities + quotes
+  - Always on for entry quotes (no env gate). Fail closed on entries; exits still place.
   - Always tools-off single Responses call (`store: false`); no Amarok tools on the cron place path
-- [x] Paper vs live clarity: paper trader is unwired (no ZeroSignal spend). Live / live-dry-run call review only when the flag is on and entry quotes remain in the placement queue.
+- [x] Paper vs live clarity: paper trader is unwired (no ZeroSignal spend). Live / live-dry-run always review when entry quotes remain in the placement queue.
 
 ### 2. Naming leftovers
 
-- [ ] Rename GitHub repo (or add redirect) when ready; update remote references
-- [ ] Sweep code comments, log prefixes (`[alpha-live]` → product-consistent tags), dashboard title / branding
-- [ ] Optional: `ghillie:*` script aliases alongside `alpha:*` / `amarok:*`
+- [x] Rename GitHub repo (or add redirect) when ready; update remote references — now `xxiled-plastic-cat/ghillie-bot` (old path redirects)
+- [x] Sweep code comments, log prefixes (`[ghillie-live]` etc.), dashboard title / branding
+- [x] Optional: `ghillie:*` script aliases alongside `alpha:*` / `amarok:*`
 
 ### 3. Contribution guide (open source)
 
-- [ ] Add root [`CONTRIBUTING.md`](./CONTRIBUTING.md) (use brownie’s guide as a template)
-- [ ] Cover: Node version, `npm install`, `.env.example`, dry-run defaults, never commit secrets
-- [ ] PR checklist: `npm run typecheck`, `npm test`, format/lint once those exist
-- [ ] Paid-call warning: Amarok x402 spends **mainnet USDC**; prefer unit tests over live MCP in CI
-- [ ] Code of conduct link or short conduct section if publishing under an org
-- [ ] Issue / PR templates (bug, feature, security contact)
+- [x] Add root [`CONTRIBUTING.md`](../CONTRIBUTING.md) (use brownie’s guide as a template)
+- [x] Cover: Node version, `npm install`, `.env.example`, dry-run defaults, never commit secrets
+- [x] PR checklist: `npm run typecheck`, `npm test`, format/lint once those exist
+- [x] Paid-call warning: Amarok x402 spends **mainnet USDC**; prefer unit tests over live MCP in CI
+- [x] Code of conduct link or short conduct section if publishing under an org
+- [x] Issue / PR templates (bug, feature, security contact)
 
 ### 4. MIT license
 
-- [ ] Add root `LICENSE` with MIT text and copyright holder (e.g. Neon Forge Ltd / CompX)
-- [ ] Set `"license": "MIT"` in `package.json` (currently `ISC`)
-- [ ] Mention license in README
-- [ ] Confirm third-party deps’ licenses are compatible
+- [x] Add root `LICENSE` with MIT text and copyright holder (e.g. Neon Forge Ltd / CompX)
+- [x] Set `"license": "MIT"` in `package.json` (currently `ISC`)
+- [x] Mention license in README
+- [x] Confirm third-party deps’ licenses are compatible
 
 ### 5. Prompt review
 
@@ -123,10 +124,10 @@ Before shipping any LLM decide / research agent:
 ## Suggested order
 
 1. Stabilize Amarok API origin (522s) + e2e paid/place smoke
-2. ~~Wire ZeroSignal decide / review into the live loop~~ (done — enable `ALPHA_ENABLE_PLAN_REVIEW`)
+2. ~~Wire ZeroSignal decide / review into the live loop~~ (done — always on for entry place)
 3. Finish remaining prompt review notes (risk language) if shipping publicly
-4. MIT `LICENSE` + `CONTRIBUTING.md` + README OSS section
-5. Naming leftovers (GitHub rename, log prefixes, dashboard branding)
+4. ~~MIT `LICENSE` + README OSS section~~ (done; CONTRIBUTING done)
+5. ~~Naming leftovers (GitHub rename, log prefixes, dashboard branding)~~ (done)
 6. Lint / CI / `QUICKSTART.md` polish
 
 ---

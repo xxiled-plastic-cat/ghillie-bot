@@ -265,13 +265,13 @@ function installAlphaApiDiagnostics(): void {
           bodyPreview = "<failed to read response body>";
         }
         console.error(
-          `[alpha-api] ${method} ${url} -> ${response.status} ${response.statusText} | body=${bodyPreview}`,
+          `[ghillie-api] ${method} ${url} -> ${response.status} ${response.statusText} | body=${bodyPreview}`,
         );
       }
       return response;
     } catch (error) {
       if (isAlphaApi) {
-        console.error(`[alpha-api] ${method} ${url} -> request failed: ${shortError(error)}`);
+        console.error(`[ghillie-api] ${method} ${url} -> request failed: ${shortError(error)}`);
       }
       throw error;
     }

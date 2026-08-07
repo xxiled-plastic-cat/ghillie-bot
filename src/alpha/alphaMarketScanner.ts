@@ -1,14 +1,18 @@
 import type { AlphaConfig } from "./alphaConfig.js";
 import type { AlphaMarket, AlphaOrderbook } from "./alphaTypes.js";
 import type { PaymentReceipt } from "../integrations/amarok/payment.js";
+import type { ManagedToolResult } from "../integrations/amarok/client.js";
 import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
 import { marketFromAmarok, orderbookFromAmarok, scanFromAmarok } from "../integrations/amarok/adapters.js";
+import { loadOperatorPreferencesFromEnv } from "../integrations/storage/operatorPreferences.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 function logStartupDebug(message: string): void {
   if (!isDebugModeEnabled()) return;
   console.log(`[startup-debug ${new Date().toISOString()}] [scan] ${message}`);
 }
+
+export type AlphaResearchMode = "legacy" | "lane";
 
 export type AlphaScanResult = {
   markets: AlphaMarket[];
@@ -17,6 +21,10 @@ export type AlphaScanResult = {
   rewardError?: string;
   /** x402 receipts from Amarok research calls during this scan (when paid). */
   payments?: PaymentReceipt[];
+  /** Host research path: lane MCP tools when operator prefs are present. */
+  researchMode?: AlphaResearchMode;
+  /** Trimmed operator prefs when present (reuse for plan-review). */
+  operatorPreferences?: string;
 };
 
 function isLiveMarket(market: AlphaMarket): boolean {
@@ -30,10 +38,27 @@ function parseOptionalLimit(value: number): number | undefined {
   return normalized;
 }
 
+function collectPayments(...results: Array<ManagedToolResult | undefined>): PaymentReceipt[] {
+  return results
+    .map((result) => result?.payment)
+    .filter((payment): payment is PaymentReceipt => payment !== undefined);
+}
+
+export type LoadAlphaScanOptions = {
+  /** Injected for tests — replaces Spaces/local prefs load. */
+  loadOperatorPreferences?: () => Promise<string | undefined>;
+  /** Injected for tests — replaces createAmarokRuntime. */
+  createRuntime?: (config: AlphaConfig) => ReturnType<typeof createAmarokRuntime>;
+};
+
 /**
  * Load Alpha market intel exclusively via Amarok remote MCP (paid x402).
+ * Non-empty operator preferences switch research off mixed opportunities onto lane tools.
  */
-export async function loadAlphaScan(config: AlphaConfig): Promise<AlphaScanResult> {
+export async function loadAlphaScan(
+  config: AlphaConfig,
+  options: LoadAlphaScanOptions = {},
+): Promise<AlphaScanResult> {
   const startedAt = Date.now();
   logStartupDebug(`loadAlphaScan start maxMarketsPerScan=${config.maxMarketsPerScan} mcp=${config.amarokMcpUrl}`);
 
@@ -41,35 +66,69 @@ export async function loadAlphaScan(config: AlphaConfig): Promise<AlphaScanResul
     throw new Error("ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok scan");
   }
 
-  const runtime = createAmarokRuntime(config);
+  const operatorPreferences = (
+    options.loadOperatorPreferences
+      ? await options.loadOperatorPreferences()
+      : await loadOperatorPreferencesFromEnv()
+  )?.trim();
+  const researchMode: AlphaResearchMode = operatorPreferences ? "lane" : "legacy";
+
+  const runtime = (options.createRuntime ?? createAmarokRuntime)(config);
   try {
     const scanArgs: Record<string, unknown> = {};
     const maxMarketsPerScan = parseOptionalLimit(config.maxMarketsPerScan);
     if (maxMarketsPerScan) scanArgs.limit = maxMarketsPerScan;
+    const limitArgs = maxMarketsPerScan ? { limit: maxMarketsPerScan } : {};
 
     const scanResult = await runtime.client.getScan(config.walletAddress, scanArgs);
-    const opportunitiesResult = await runtime.client.listOpportunities(
-      config.walletAddress,
-      maxMarketsPerScan ? { limit: maxMarketsPerScan } : {},
-    );
-    const quotesResult = await runtime.client.getQuotes(
-      config.walletAddress,
-      maxMarketsPerScan ? { limit: maxMarketsPerScan } : {},
-    );
-    const payments = [scanResult.payment, opportunitiesResult.payment, quotesResult.payment].filter(
-      (payment): payment is PaymentReceipt => payment !== undefined,
+    const quotesResult = await runtime.client.getQuotes(config.walletAddress, limitArgs);
+
+    let opportunitiesResult: ManagedToolResult | undefined;
+    let rewardsResult: ManagedToolResult | undefined;
+    let spreadsResult: ManagedToolResult | undefined;
+    let parityResult: ManagedToolResult | undefined;
+    const toolsCalled = ["amarok_get_scan", "amarok_get_quotes"];
+
+    if (researchMode === "lane") {
+      if (config.enableRewardLane) {
+        rewardsResult = await runtime.client.listRewards(config.walletAddress, limitArgs);
+        toolsCalled.push("amarok_list_rewards");
+      }
+      if (config.enableSpreadLane) {
+        spreadsResult = await runtime.client.listSpreads(config.walletAddress, limitArgs);
+        toolsCalled.push("amarok_list_spreads");
+      }
+      if (config.enableParityLane) {
+        parityResult = await runtime.client.listParity(config.walletAddress, limitArgs);
+        toolsCalled.push("amarok_list_parity");
+      }
+    } else {
+      opportunitiesResult = await runtime.client.listOpportunities(config.walletAddress, limitArgs);
+      toolsCalled.push("amarok_list_opportunities");
+    }
+
+    const payments = collectPayments(
+      scanResult,
+      quotesResult,
+      opportunitiesResult,
+      rewardsResult,
+      spreadsResult,
+      parityResult,
     );
 
     const adapted = scanFromAmarok({
       scanPayload: scanResult.data,
-      opportunitiesPayload: opportunitiesResult.data,
+      opportunitiesPayload: opportunitiesResult?.data,
+      rewardsPayload: rewardsResult?.data,
+      spreadsPayload: spreadsResult?.data,
+      parityPayload: parityResult?.data,
       quotesPayload: quotesResult.data,
     });
 
     let markets = adapted.markets.filter(isLiveMarket);
     let rewardMarkets = adapted.rewardMarkets.filter(isLiveMarket);
     logStartupDebug(
-      `amarok scan adapted markets=${markets.length} rewardMarkets=${rewardMarkets.length} orderbooks=${adapted.orderbooks.size}`,
+      `amarok scan adapted research_mode=${researchMode} tools=${toolsCalled.join(",")} markets=${markets.length} rewardMarkets=${rewardMarkets.length} orderbooks=${adapted.orderbooks.size}`,
     );
 
     const marketsByAppId = new Map<number, AlphaMarket>();
@@ -93,13 +152,15 @@ export async function loadAlphaScan(config: AlphaConfig): Promise<AlphaScanResul
     );
 
     logStartupDebug(
-      `loadAlphaScan end elapsed_ms=${Date.now() - startedAt} orderbooks=${orderbooks.size} x402_payments=${payments.length}`,
+      `loadAlphaScan end elapsed_ms=${Date.now() - startedAt} research_mode=${researchMode} orderbooks=${orderbooks.size} x402_payments=${payments.length}`,
     );
     return {
       markets,
       rewardMarkets,
       orderbooks,
       payments: payments.length > 0 ? payments : undefined,
+      researchMode,
+      operatorPreferences: operatorPreferences || undefined,
     };
   } finally {
     await runtime.close();
@@ -174,5 +235,10 @@ export function summarizeBooks(books: Iterable<AlphaOrderbook>): {
       spreadCount += 1;
     }
   }
-  return { twoSided, oneSided, empty, averageSpread: spreadCount > 0 ? spreadTotal / spreadCount : 0 };
+  return {
+    twoSided,
+    oneSided,
+    empty,
+    averageSpread: spreadCount > 0 ? spreadTotal / spreadCount : 0,
+  };
 }

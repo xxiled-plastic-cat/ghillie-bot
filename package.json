@@ -4,6 +4,10 @@
   "description": "Ghillie-bot: Alpha Arcade user-agent (Amarok MCP + ZeroSignal)",
   "type": "module",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xxiled-plastic-cat/ghillie-bot.git"
+  },
   "workspaces": [
     "apps/*"
   ],
@@ -35,6 +39,17 @@
     "alpha:dashboard:web:build": "npm --prefix apps/alpha-dashboard run build",
     "alpha:dashboard:web:typecheck": "npm --prefix apps/alpha-dashboard run typecheck",
     "alpha:dashboard": "concurrently \"npm run alpha:dashboard:api\" \"npm run alpha:dashboard:web\"",
+    "ghillie:scan": "npm run alpha:scan",
+    "ghillie:rewards": "npm run alpha:rewards",
+    "ghillie:market": "npm run alpha:market",
+    "ghillie:paper": "npm run alpha:paper",
+    "ghillie:paper-report": "npm run alpha:paper-report",
+    "ghillie:live-dry-run": "npm run alpha:live-dry-run",
+    "ghillie:live": "npm run alpha:live",
+    "ghillie:cron": "npm run alpha:cron",
+    "ghillie:cron:live": "npm run alpha:cron:live",
+    "ghillie:cron:live:once": "npm run alpha:cron:live:once",
+    "ghillie:dashboard": "npm run alpha:dashboard",
     "amarok:discovery": "tsx src/cli/amarokDiscovery.ts",
     "amarok:opportunities": "tsx src/cli/amarokOpportunities.ts",
     "amarok:rewards": "tsx src/cli/amarokLaneList.ts rewards",
@@ -57,11 +72,11 @@
     "poly:cron:once": "tsx src/polymarket/polyCron.ts --once",
     "poly:typecheck": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
+    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/alphaMarketScanner.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@algorandfoundation/algokit-utils": "^9.2.0",
     "@alpha-arcade/sdk": "^0.3.7",

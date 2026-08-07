@@ -114,6 +114,101 @@ export function detectClosedCancels(input: {
   return cancelled;
 }
 
+export function inventorySideKey(marketAppId: number, outcome: "YES" | "NO"): string {
+  return `${marketAppId}:${outcome}`;
+}
+
+export type ClosedOrderClassification = {
+  fills: LiveFillEvent[];
+  cancels: AlphaPaperOrder[];
+};
+
+/**
+ * When an escrow disappears between ticks, decide fill vs cancel from inventory
+ * evidence — never treat a cancel as a fill when the share delta is ~0.
+ *
+ * - ask: chain free+escrow short vs bot state by ~unfilled → fill remainder
+ * - bid: chain free+escrow grew vs bot state by ~unfilled → fill remainder
+ */
+export function classifyClosedOrdersAgainstInventory(input: {
+  closedOrders: AlphaPaperOrder[];
+  cursor: Record<string, number>;
+  /** Bot-state share counts before applying close fills */
+  stateSharesBySide: Map<string, number>;
+  /** Wallet free + remaining open sell-escrow after the closes */
+  chainSharesBySide: Map<string, number>;
+  observedAt?: string;
+}): ClosedOrderClassification {
+  const { closedOrders, cursor } = input;
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const stateSharesBySide = new Map(input.stateSharesBySide);
+  const fills: LiveFillEvent[] = [];
+  const cancels: AlphaPaperOrder[] = [];
+
+  for (const order of closedOrders) {
+    const escrowAppId = order.liveEscrowAppId;
+    if (escrowAppId === undefined) continue;
+    const filled = cursorFilled(cursor, escrowAppId);
+    const unfilled = Math.max(0, order.sizeShares - filled);
+    if (unfilled <= FILL_EPS) continue;
+
+    const key = inventorySideKey(order.marketAppId, order.outcome);
+    const stateShares = stateSharesBySide.get(key) ?? 0;
+    const chainShares = input.chainSharesBySide.get(key) ?? 0;
+
+    let fillShares = 0;
+    if (order.side === "ask") {
+      const missing = stateShares - chainShares;
+      if (missing >= unfilled - FILL_EPS) fillShares = unfilled;
+      else if (missing > FILL_EPS) fillShares = missing;
+    } else {
+      const gained = chainShares - stateShares;
+      if (gained >= unfilled - FILL_EPS) fillShares = unfilled;
+      else if (gained > FILL_EPS) fillShares = gained;
+    }
+
+    fillShares = Math.min(unfilled, Math.max(0, fillShares));
+    const cancelShares = Math.max(0, unfilled - fillShares);
+
+    if (fillShares > FILL_EPS) {
+      const filledSharesAfter = filled + fillShares;
+      fills.push({
+        id: liveFillEventId(escrowAppId, filledSharesAfter),
+        escrowAppId,
+        marketAppId: order.marketAppId,
+        marketId: order.marketId,
+        outcome: order.outcome,
+        side: order.side,
+        shares: fillShares,
+        price: order.price,
+        priceSource: "limit",
+        source: order.source,
+        filledSharesAfter,
+        observedAt,
+        title: order.title,
+        slug: order.slug,
+      });
+      if (order.side === "ask") {
+        stateSharesBySide.set(key, Math.max(0, stateShares - fillShares));
+      } else {
+        stateSharesBySide.set(key, stateShares + fillShares);
+      }
+    }
+
+    if (cancelShares > FILL_EPS) {
+      cancels.push({
+        ...order,
+        status: "cancelled",
+        remainingShares: cancelShares,
+        filledShares: Math.min(order.sizeShares, filled + fillShares),
+        updatedAt: observedAt,
+      });
+    }
+  }
+
+  return { fills, cancels };
+}
+
 export function buildPlaceTimeFillEvent(input: {
   order: AlphaPaperOrder;
   escrowAppId: number;

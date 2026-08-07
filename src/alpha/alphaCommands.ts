@@ -66,7 +66,7 @@ async function runRewardHistoryCommand(receiverArg: string | undefined, senderAr
     }
   }
 
-  console.log("NUCKELAVEE ALPHA REWARD HISTORY");
+  console.log("GHILLIE ALPHA REWARD HISTORY");
   console.log("");
   console.log(`Receiver: ${receiver}`);
   console.log(`Reward sender filter: ${sender}`);
@@ -218,7 +218,7 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
     return true;
   });
 
-  console.log("NUCKELAVEE ALPHA CANCEL ORDER");
+  console.log("GHILLIE ALPHA CANCEL ORDER");
   console.log("");
   console.log(`Wallet: ${walletAddress}`);
   console.log(`Filter: marketAppId=${marketAppId ?? "any"} escrowAppId=${parsed.escrowAppId ?? "any"}`);
@@ -445,7 +445,7 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
       await saveAlphaState(config.stateKey, result.state);
     }
   }
-  console.log(mode === "live" ? "NUCKELAVEE ALPHA LIVE" : "NUCKELAVEE ALPHA LIVE DRY RUN");
+  console.log(mode === "live" ? "GHILLIE ALPHA LIVE" : "GHILLIE ALPHA LIVE DRY RUN");
   console.log("");
   for (const action of result.actions) {
     console.log(`[${action.kind.toUpperCase()}] ${action.message}`);

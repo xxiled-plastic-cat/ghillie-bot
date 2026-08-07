@@ -154,6 +154,22 @@ test("selectAgentResearchTools excludes execution quote", () => {
   );
 });
 
+test("selectAgentResearchTools lane mode excludes opportunities and keeps lane tools", () => {
+  const selected = selectAgentResearchTools(
+    [
+      { name: "amarok_list_opportunities", inputSchema: { type: "object", properties: {} } },
+      { name: "amarok_list_rewards", inputSchema: { type: "object", properties: {} } },
+      { name: "amarok_list_spreads", inputSchema: { type: "object", properties: {} } },
+      { name: "amarok_get_scan", inputSchema: { type: "object", properties: {} } },
+    ],
+    { researchMode: "lane" },
+  );
+  assert.deepEqual(
+    selected.map((tool) => tool.name),
+    ["amarok_list_rewards", "amarok_list_spreads", "amarok_get_scan"],
+  );
+});
+
 test("runResponsesToolLoop replays transcript and never sends previous_response_id", async () => {
   const creates: unknown[] = [];
   const openai: ResponsesClient = {

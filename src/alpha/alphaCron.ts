@@ -60,7 +60,7 @@ function startHealthServer(): void {
     response.end(
       JSON.stringify({
         ok: true,
-        service: "nuckelavee-alpha-cron",
+        service: "ghillie-alpha-cron",
         schedule,
         command,
         running,
@@ -89,10 +89,10 @@ async function main(): Promise<void> {
   if (!cron.validate(schedule)) {
     throw new Error(`Invalid ALPHA_CRON_SCHEDULE: ${schedule}`);
   }
-  console.log(`NUCKELAVEE ALPHA CRON`);
+  console.log(`GHILLIE ALPHA CRON`);
   console.log(`Schedule: ${schedule}`);
   console.log(`Command: ${command}`);
-  await notifyTelegram(`Nuckelavee alpha cron started\nschedule=${schedule}\ncommand=${command}`);
+  await notifyTelegram(`Ghillie alpha cron started\nschedule=${schedule}\ncommand=${command}`);
   startHealthServer();
   cron.schedule(schedule, async () => {
     if (running) {
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       console.log(`[${skippedAt}] previous tick still running; skipping this schedule`);
       await notifyTelegramThrottled(
         "alpha-cron-overlap-skip",
-        `Nuckelavee cron overlap skip\nat=${skippedAt}\nprevious_tick_started_at=${lastTickStartedAt ?? "unknown"}`,
+        `Ghillie cron overlap skip\nat=${skippedAt}\nprevious_tick_started_at=${lastTickStartedAt ?? "unknown"}`,
         { throttleMinutes: skipNoticeThrottleMinutes },
       );
       return;
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     logStartupDebug(`tick scheduled end at=${lastTickEndedAt} exitCode=${exitCode}`);
     console.log(`[${lastTickEndedAt}] cron tick end exit_code=${exitCode}`);
     if (exitCode !== 0) {
-      await notifyTelegram(`ALERT: Nuckelavee cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
+      await notifyTelegram(`ALERT: Ghillie cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
     }
     running = false;
   });

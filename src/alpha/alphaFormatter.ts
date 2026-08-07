@@ -142,7 +142,7 @@ export function printScan(scan: AlphaScanResult, rewardCandidates: AlphaOpportun
   const surface = summarizeBooks(scan.orderbooks.values());
   const rewardByMarketAppId = new Map(rewardCandidates.map((candidate) => [candidate.marketAppId, candidate]));
   const marketRows = uniqueMarketsByVolume(scan);
-  console.log("NUCKELAVEE / ALPHA ARCADE");
+  console.log("GHILLIE / ALPHA ARCADE");
   console.log("");
   console.log(`Markets loaded: ${scan.markets.length}`);
   console.log(`Reward markets loaded: ${scan.rewardMarkets.length}`);
@@ -199,7 +199,7 @@ export function printScan(scan: AlphaScanResult, rewardCandidates: AlphaOpportun
 }
 
 export function printRewards(rewardMarkets: AlphaMarket[], candidates: AlphaOpportunity[], rewardError?: string): void {
-  console.log("NUCKELAVEE / ALPHA REWARDS");
+  console.log("GHILLIE / ALPHA REWARDS");
   console.log("");
   if (rewardError) console.log(`Reward metadata warning: ${rewardError}`);
   console.log(`Reward markets loaded: ${rewardMarkets.length}`);
@@ -471,7 +471,7 @@ export function printLiveSummary(
 }
 
 export function printPaperReport(state: AlphaBotState): void {
-  console.log("NUCKELAVEE ALPHA PAPER REPORT");
+  console.log("GHILLIE ALPHA PAPER REPORT");
   console.log("");
   console.log(`Starting balance: $${state.startingBalance.toFixed(2)}`);
   console.log(`Cash: $${state.cash.toFixed(2)}`);

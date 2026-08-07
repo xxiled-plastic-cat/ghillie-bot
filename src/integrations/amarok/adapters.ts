@@ -155,13 +155,33 @@ export function quotesFromAmarok(payload: unknown): AlphaQuote[] {
   return quotes;
 }
 
+function opportunityRowsFromPayload(payload: unknown, nestedKey: string): unknown[] {
+  const data = unwrapData(payload);
+  if (Array.isArray(data)) return data;
+  const record = asRecord(data);
+  if (!record) return [];
+  if (Array.isArray(record[nestedKey])) return record[nestedKey] as unknown[];
+  if (Array.isArray(record.opportunities)) return record.opportunities as unknown[];
+  return [];
+}
+
+function withDefaultKind(row: unknown, defaultKind: string): unknown {
+  const record = asRecord(row);
+  if (!record) return row;
+  if (asString(record.kind)) return row;
+  return { ...record, kind: defaultKind };
+}
+
 /**
- * Adapt Amarok scan / opportunities / quotes payloads into the Alpha scan DTO
+ * Adapt Amarok scan / opportunities / lane / quotes payloads into the Alpha scan DTO
  * used by liveTrader and paperTrader.
  */
 export function scanFromAmarok(params: {
   scanPayload?: unknown;
   opportunitiesPayload?: unknown;
+  rewardsPayload?: unknown;
+  spreadsPayload?: unknown;
+  parityPayload?: unknown;
   quotesPayload?: unknown;
 }): AlphaScanResult {
   const scanData = asRecord(unwrapData(params.scanPayload)) ?? asRecord(params.scanPayload) ?? {};
@@ -183,13 +203,12 @@ export function scanFromAmarok(params: {
     }
   }
 
-  const opportunityRows = (() => {
-    const data = unwrapData(params.opportunitiesPayload);
-    if (Array.isArray(data)) return data;
-    const record = asRecord(data);
-    if (Array.isArray(record?.opportunities)) return record!.opportunities as unknown[];
-    return [];
-  })();
+  const opportunityRows = [
+    ...opportunityRowsFromPayload(params.opportunitiesPayload, "opportunities"),
+    ...opportunityRowsFromPayload(params.rewardsPayload, "rewards").map((row) => withDefaultKind(row, "lp_reward")),
+    ...opportunityRowsFromPayload(params.spreadsPayload, "spreads").map((row) => withDefaultKind(row, "spread")),
+    ...opportunityRowsFromPayload(params.parityPayload, "parity").map((row) => withDefaultKind(row, "parity")),
+  ];
 
   const rewardByAppId = new Map<number, AlphaMarket>();
   for (const row of opportunityRows) {
@@ -209,6 +228,23 @@ export function scanFromAmarok(params: {
     });
     if (!market) continue;
     rewardByAppId.set(market.marketAppId, market);
+    if (!markets.some((existing) => existing.marketAppId === market.marketAppId)) {
+      markets.push(market);
+    }
+  }
+
+  // Spreads / parity lane rows can still contribute market stubs for quoteEngine.
+  for (const row of opportunityRows) {
+    const record = asRecord(row);
+    if (!record) continue;
+    const kind = asString(record.kind) ?? "";
+    if (kind.includes("reward") || kind === "lp_reward") continue;
+    const market = marketFromAmarok({
+      ...record,
+      status: asString(record.status) ?? "live",
+      resolved: false,
+    });
+    if (!market || market.resolved || market.status !== "live") continue;
     if (!markets.some((existing) => existing.marketAppId === market.marketAppId)) {
       markets.push(market);
     }

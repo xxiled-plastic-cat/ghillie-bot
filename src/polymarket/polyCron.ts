@@ -60,7 +60,7 @@ function startHealthServer(): void {
     response.end(
       JSON.stringify({
         ok: true,
-        service: "nuckelavee-polymarket-cron",
+        service: "ghillie-polymarket-cron",
         schedule,
         command,
         running,
@@ -88,10 +88,10 @@ async function main(): Promise<void> {
   if (!cron.validate(schedule)) {
     throw new Error(`Invalid POLY_CRON_SCHEDULE: ${schedule}`);
   }
-  console.log("NUCKELAVEE POLYMARKET CRON");
+  console.log("GHILLIE POLYMARKET CRON");
   console.log(`Schedule: ${schedule}`);
   console.log(`Command: ${command}`);
-  await notifyTelegram(`Nuckelavee polymarket cron started\nschedule=${schedule}\ncommand=${command}`);
+  await notifyTelegram(`Ghillie polymarket cron started\nschedule=${schedule}\ncommand=${command}`);
   startHealthServer();
   cron.schedule(schedule, async () => {
     if (running) {
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
       console.log(`[${skippedAt}] previous tick still running; skipping this schedule`);
       await notifyTelegramThrottled(
         "poly-cron-overlap-skip",
-        `Nuckelavee polymarket cron overlap skip\nat=${skippedAt}\nprevious_tick_started_at=${lastTickStartedAt ?? "unknown"}`,
+        `Ghillie polymarket cron overlap skip\nat=${skippedAt}\nprevious_tick_started_at=${lastTickStartedAt ?? "unknown"}`,
         { throttleMinutes: skipNoticeThrottleMinutes },
       );
       return;
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     lastTickExitCode = exitCode;
     console.log(`[${lastTickEndedAt}] poly cron tick end exit_code=${exitCode}`);
     if (exitCode !== 0) {
-      await notifyTelegram(`ALERT: Nuckelavee polymarket cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
+      await notifyTelegram(`ALERT: Ghillie polymarket cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
     }
     running = false;
   });

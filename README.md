@@ -4,6 +4,14 @@ Formerly **Nuckelavee**. Alpha Arcade **user-agent**: walleted trading bot that 
 
 Hard boundary: Amarok never holds keys, never signs payments, and never submits orders (`executionSubmitted: false`). This bot owns x402 USDC micropayments, custody, cancel/claim/merge/split venue ops, fills, inventory, and the live loop.
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, PR checks, and conduct. Report security issues privately per [SECURITY.md](./SECURITY.md).
+
+## License
+
+MIT — see [LICENSE](./LICENSE). Production dependencies are MIT-compatible (MIT, Apache-2.0, ISC, BSD, Unlicense); no GPL/AGPL in the production tree.
+
 ## Install
 
 ```bash
@@ -30,7 +38,7 @@ DO_SPACES_SECRET=
 
 Alpha PnL / positions / orders live in a JSON object on DigitalOcean Spaces (same pattern as brownie-bot), key `{DO_SPACES_PREFIX}/bot-states/{ALPHA_STATE_KEY}.json` (default `ghillie-bot/bot-states/alpha.json`). If Spaces env is omitted, state is written under `BOT_STATE_DATA_DIR` (default `data/bot-states`) with the same key layout. Polymarket paper state uses the same store under `POLY_PAPER_STATE_KEY` (default `poly-paper`).
 
-Optional plan-review **operator preferences** (prose strategy, e.g. prefer rewards then spread) load from `{DO_SPACES_PREFIX}/operator-preferences.md`, or `config/operator-preferences.md` when Spaces is unset — see [`config/operator-preferences.example.md`](./config/operator-preferences.example.md). The open-source base prompt stays in code; missing prefs leave it unchanged.
+Optional plan-review **operator preferences** load from `{DO_SPACES_PREFIX}/operator-preferences.md`, or `config/operator-preferences.md` when Spaces is unset — see [`config/operator-preferences.example.md`](./config/operator-preferences.example.md). Non-empty prefs also switch the live host research path from mixed `amarok_list_opportunities` onto lane MCP tools (`rewards` / `spreads` / `parity`). Missing prefs keep the OSS default (scan + opportunities + quotes) and leave the base plan-review prompt unchanged.
 
 No Postgres / Supabase is required.
 
@@ -130,6 +138,7 @@ npm run typecheck
 npm test
 ```
 
+`ghillie:*` aliases (`ghillie:live`, `ghillie:cron:live`, `ghillie:dashboard`, …) wrap the same `alpha:*` scripts; `alpha:*` remains canonical.
 ### Dashboard (read-only)
 
 ```bash
@@ -188,4 +197,4 @@ Integration code lives under `src/integrations/amarok/` (MCP client + x402 payme
 
 ## Roadmap
 
-See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (MIT license, CONTRIBUTING, ZeroSignal decide/review agent, prompt review, and more).
+See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (prompt review, Amarok hardening, lint/CI, and more).

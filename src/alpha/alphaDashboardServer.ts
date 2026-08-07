@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     if (path === "/" || path === "/health" || path === "/healthz" || path === "/api/alpha/health") {
       sendJson(response, 200, {
         ok: true,
-        service: "nuckelavee-alpha-dashboard-api",
+        service: "ghillie-alpha-dashboard-api",
         now: new Date().toISOString(),
       });
       return;

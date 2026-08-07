@@ -74,7 +74,7 @@ _Completed: Phase 3 net exposure formula + shared inventory notional (`alphaRisk
 Goal: merge / claim / parity cannot invent PnL or leave orphan legs from races.
 
 - [x] Merge only free matched YES/NO sets (never treat escrowed sell legs as mergeable)
-- [x] Claim / stale prune: realise PnL only with confirmed resolution **or** redeem/fill receipt — do not write off on API gaps alone after N ticks
+- [x] Claim / stale prune: realise PnL only with confirmed resolution; after the prune window, snap ghost inventory to free+escrow without mark write-off when still live (filled outside fill ledger). Closed asks classify fill vs cancel from inventory delta — do not invent PnL on transient API gaps alone
 - [x] Keep unaccounted-tick warnings, but raise the bar before mutating realised PnL / deleting positions
 - [x] Parity (`parityTrader.ts`): all-or-nothing group **or** explicit residual unwind path; do not `return` mid-queue leaving orphans
 - [x] Single close-out path for resolved assets (align `resolvedClaimLane` vs `alphaResolvedAssetCleanup` so they cannot double-count)

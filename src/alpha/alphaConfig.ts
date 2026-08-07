@@ -112,11 +112,6 @@ export type AlphaConfig = {
   paperStartingBalanceUsd: number;
   enableLiveTrading: boolean;
   confirmRisk: boolean;
-  /**
-   * When true, reward/spread entry quotes in the live placement queue are
-   * sanity-checked by ZeroSignal before place. Inventory exits skip review.
-   */
-  enablePlanReview: boolean;
   /** Override OPENAI_REASONING_EFFORT for plan review only. */
   planReviewReasoningEffort?: ZeroSignalReasoningEffort;
   walletAddress?: string;
@@ -267,7 +262,6 @@ export function readAlphaConfig(): AlphaConfig {
     paperStartingBalanceUsd: readNumber("ALPHA_PAPER_STARTING_BALANCE_USD", 50),
     enableLiveTrading: readBool("ALPHA_ENABLE_LIVE_TRADING", false),
     confirmRisk: readBool("ALPHA_CONFIRM_RISK", false),
-    enablePlanReview: readBool("ALPHA_ENABLE_PLAN_REVIEW", false),
     planReviewReasoningEffort: readPlanReviewReasoningEffort(),
     walletAddress: process.env.ALPHA_WALLET_ADDRESS || derivedWalletAddress,
     walletMnemonic,

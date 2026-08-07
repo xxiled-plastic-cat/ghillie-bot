@@ -20,7 +20,6 @@ const APP_ID = 3162451457;
 
 function testConfig(overrides: Partial<AlphaConfig> = {}): AlphaConfig {
   return {
-    enablePlanReview: true,
     rewardMaxOrderSizeUsd: 10,
     spreadMaxOrderSizeUsd: 10,
     maxInventoryNotionalUsd: 40,
@@ -225,23 +224,14 @@ describe("planReview apply", () => {
 });
 
 describe("planReview runPlanReview", () => {
-  it("skips inference when disabled or no entries", async () => {
+  it("skips inference when no entry quotes", async () => {
     const exit = quote({ side: "ask", outcome: "YES", source: "inventory_exit" });
-    const disabled = await runPlanReview({
-      placementQueue: [quote({ side: "bid", outcome: "YES", source: "reward" })],
-      state: emptyAlphaState(100),
-      orderbooks: new Map(),
-      markets: new Map(),
-      config: testConfig({ enablePlanReview: false }),
-    });
-    assert.equal(disabled.reviewed, false);
-
     const exitsOnly = await runPlanReview({
       placementQueue: [exit],
       state: emptyAlphaState(100),
       orderbooks: new Map(),
       markets: new Map(),
-      config: testConfig({ enablePlanReview: true }),
+      config: testConfig(),
     });
     assert.equal(exitsOnly.reviewed, false);
     assert.equal(exitsOnly.placementQueue.length, 1);

@@ -332,7 +332,7 @@ export async function buildCapitalLedger(input: {
 }
 
 export function printCapitalLedgerReport(ledger: CapitalLedger, walletAddress?: string): void {
-  console.log("NUCKELAVEE ALPHA CAPITAL REPORT");
+  console.log("GHILLIE ALPHA CAPITAL REPORT");
   console.log("");
   if (walletAddress) console.log(`Wallet: ${walletAddress}`);
   console.log(`As of: ${ledger.asOf}`);

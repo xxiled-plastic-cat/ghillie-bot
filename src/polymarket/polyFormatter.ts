@@ -58,7 +58,7 @@ export function printPolyScan(
 ): void {
   const surface = summarizeSurface(scan);
   const marketsByVolume = [...scan.markets].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-  console.log("NUCKELAVEE / POLYMARKET");
+  console.log("GHILLIE / POLYMARKET");
   console.log("");
   console.log(`Markets loaded: ${scan.markets.length}`);
   console.log(`Reward markets loaded: ${scan.rewardMarkets.length}`);
@@ -111,7 +111,7 @@ export function printPolyScan(
 }
 
 export function printPolyRewards(rewardCandidates: PolyOpportunity[]): void {
-  console.log("NUCKELAVEE / POLYMARKET REWARDS");
+  console.log("GHILLIE / POLYMARKET REWARDS");
   console.log("");
   for (const candidate of rewardCandidates.slice(0, 12)) {
     console.log("[LP REWARD CANDIDATE]");
@@ -229,7 +229,7 @@ export function printPolyPaperReport(
   conservative: PolyPaperReport,
   balanced: PolyPaperReport,
 ): void {
-  console.log("NUCKELAVEE / POLYMARKET PAPER REPORT");
+  console.log("GHILLIE / POLYMARKET PAPER REPORT");
   console.log("");
   console.log(reportLine("Fill rate", pct(conservative.fillRate), pct(balanced.fillRate)));
   console.log(reportLine("Median fill time", fmtSeconds(conservative.medianFillSeconds), fmtSeconds(balanced.medianFillSeconds)));

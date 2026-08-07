@@ -102,7 +102,7 @@ function formatMarketLabel(market: Pick<KnownAlphaMarket, "marketAppId" | "marke
 }
 
 function printSummary(summary: CleanupSummary): void {
-  console.log("NUCKELAVEE ALPHA RESOLVED ASSET CLEANUP");
+  console.log("GHILLIE ALPHA RESOLVED ASSET CLEANUP");
   console.log("");
   console.log(`Mode: ${summary.dryRun ? "dry-run" : "execute"}`);
   console.log(`Wallet: ${summary.walletAddress}`);
@@ -181,7 +181,7 @@ async function loadWalletOpenOrdersWithFallback(
     return await liveClient.getWalletOpenOrders(walletAddress);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-cleanup] wallet order lookup via API failed; trying per-market fallback: ${message}`);
+    console.error(`[ghillie-cleanup] wallet order lookup via API failed; trying per-market fallback: ${message}`);
   }
 
   const fallbackResults = await Promise.allSettled(
@@ -206,13 +206,13 @@ async function buildKnownMarketsFromWallet(
   const positions = positionsResult.status === "fulfilled" ? positionsResult.value : [];
   if (positionsResult.status === "rejected") {
     const message = positionsResult.reason instanceof Error ? positionsResult.reason.message : String(positionsResult.reason);
-    console.error(`[alpha-cleanup] wallet positions lookup failed; continuing without positions: ${message}`);
+    console.error(`[ghillie-cleanup] wallet positions lookup failed; continuing without positions: ${message}`);
   }
   const liveMarkets = liveMarketsResult.status === "fulfilled" ? liveMarketsResult.value : [];
   if (liveMarketsResult.status === "rejected") {
     const message =
       liveMarketsResult.reason instanceof Error ? liveMarketsResult.reason.message : String(liveMarketsResult.reason);
-    console.error(`[alpha-cleanup] live markets lookup failed; continuing without live enrichment: ${message}`);
+    console.error(`[ghillie-cleanup] live markets lookup failed; continuing without live enrichment: ${message}`);
   }
 
   const seedIds = collectMarketAppIds([], positions, liveMarkets);
@@ -245,7 +245,7 @@ async function buildKnownMarketsFromWallet(
 
 export async function runResolvedAssetCleanup(options: CleanupOptions): Promise<void> {
   console.log(
-    "[alpha-cleanup] CLI wallet ASA cleanup only — does not load/save bot state or adjust realisedPnl (claim lane owns trading PnL).",
+    "[ghillie-cleanup] CLI wallet ASA cleanup only — does not load/save bot state or adjust realisedPnl (claim lane owns trading PnL).",
   );
   const config = readAlphaConfig();
   const { walletAddress, signer } = resolveWalletAddressAndSigner();

@@ -178,3 +178,27 @@ test("scanFromAmarok adapts markets and books", () => {
   assert.equal(scan.rewardMarkets.length, 1);
   assert.ok(scan.orderbooks.get(3100000001)?.yesBid === 0.42);
 });
+
+test("scanFromAmarok fills rewardMarkets from rewardsPayload without opportunities", () => {
+  const scan = scanFromAmarok({
+    scanPayload: {
+      data: {
+        markets: [
+          {
+            marketAppId: 3100000002,
+            title: "Reward lane",
+            status: "live",
+            resolved: false,
+            book: { bestBid: 0.4, bestAsk: 0.45 },
+          },
+        ],
+      },
+    },
+    rewardsPayload: {
+      data: [{ marketAppId: 3100000002, title: "Reward lane", estimatedUsdPerDay: "8.5" }],
+    },
+  });
+  assert.equal(scan.rewardMarkets.length, 1);
+  assert.equal(scan.rewardMarkets[0]?.marketAppId, 3100000002);
+  assert.equal(scan.rewardMarkets[0]?.reward.dailyRewardsUsd, 8.5);
+});

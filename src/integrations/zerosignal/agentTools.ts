@@ -3,6 +3,9 @@ import type { McpToolDefinition } from "../amarok/client.js";
 /** Research tools the model may call. Execution quote stays host-only. */
 export const AGENT_RESEARCH_TOOL_ALLOWLIST = new Set([
   "amarok_list_opportunities",
+  "amarok_list_rewards",
+  "amarok_list_spreads",
+  "amarok_list_parity",
   "amarok_get_market",
   "amarok_get_quotes",
   "amarok_get_scan",
@@ -10,6 +13,11 @@ export const AGENT_RESEARCH_TOOL_ALLOWLIST = new Set([
 
 /** Host-only after policy approval. Never expose to the planning agent. */
 export const HOST_ONLY_EXECUTION_TOOLS = new Set(["amarok_get_execution_quote"]);
+
+export type SelectAgentResearchToolsOptions = {
+  /** When `lane`, exclude mixed `amarok_list_opportunities`. Default: legacy. */
+  researchMode?: "legacy" | "lane";
+};
 
 /**
  * Strip custody / payment fields from MCP tool schemas before showing them
@@ -22,12 +30,17 @@ export function prepareAgentTools(tools: McpToolDefinition[]): McpToolDefinition
   }));
 }
 
-export function selectAgentResearchTools(tools: McpToolDefinition[]): McpToolDefinition[] {
-  return prepareAgentTools(tools).filter(
-    (tool) =>
-      AGENT_RESEARCH_TOOL_ALLOWLIST.has(tool.name) &&
-      !HOST_ONLY_EXECUTION_TOOLS.has(tool.name),
-  );
+export function selectAgentResearchTools(
+  tools: McpToolDefinition[],
+  options: SelectAgentResearchToolsOptions = {},
+): McpToolDefinition[] {
+  const researchMode = options.researchMode ?? "legacy";
+  return prepareAgentTools(tools).filter((tool) => {
+    if (HOST_ONLY_EXECUTION_TOOLS.has(tool.name)) return false;
+    if (!AGENT_RESEARCH_TOOL_ALLOWLIST.has(tool.name)) return false;
+    if (researchMode === "lane" && tool.name === "amarok_list_opportunities") return false;
+    return true;
+  });
 }
 
 export function toOpenAiFunctionTool(tool: McpToolDefinition) {
