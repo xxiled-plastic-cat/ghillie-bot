@@ -1688,6 +1688,7 @@ export async function runLiveTick(
         unsignedTxnsBase64: parsed.unsignedTxnsBase64,
         userSignIndexes: parsed.userSignIndexes,
         knownEscrowAppId: parsed.escrowAppId,
+        createEscrowIndex: parsed.createEscrowIndex,
       });
       const tracked = toTrackedLiveOrder(quoteToPlace, result);
       if (tracked.status === "open") {

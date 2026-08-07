@@ -72,7 +72,7 @@
     "poly:cron:once": "tsx src/polymarket/polyCron.ts --once",
     "poly:typecheck": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/alphaMarketScanner.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
+    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/telegramCommands.test.ts src/alpha/alphaMarketScanner.test.ts src/alpha/planReview/planReview.test.ts src/alpha/publicPnl.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
   },
   "keywords": [],
   "author": "",

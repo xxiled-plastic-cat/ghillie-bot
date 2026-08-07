@@ -4,6 +4,15 @@ import { createServer } from "node:http";
 import cron from "node-cron";
 import dotenv from "dotenv";
 import { notifyTelegram, notifyTelegramThrottled, readSkipNoticeThrottleMinutes } from "./telegramNotifier.js";
+import { TelegramBotClient } from "./telegramBotClient.js";
+import {
+  consoleTelegramLogger,
+  createCommandDispatcher,
+  createLaneCommandHandlers,
+  readTelegramCommandCredentials,
+  startTelegramCommandLoop,
+  type TelegramCommandLoop,
+} from "./telegramCommands.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 dotenv.config();
@@ -17,6 +26,7 @@ let running = false;
 let lastTickStartedAt: string | undefined;
 let lastTickEndedAt: string | undefined;
 let lastTickExitCode: number | undefined;
+let telegramCommandLoop: TelegramCommandLoop | undefined;
 
 function logStartupDebug(message: string): void {
   if (!isDebugModeEnabled()) return;
@@ -67,12 +77,38 @@ function startHealthServer(): void {
         lastTickStartedAt,
         lastTickEndedAt,
         lastTickExitCode,
+        telegramCommands: Boolean(telegramCommandLoop),
       }),
     );
   });
   server.listen(healthPort, "0.0.0.0", () => {
     console.log(`Health server listening on 0.0.0.0:${healthPort}`);
   });
+}
+
+function startTelegramCommands(): void {
+  const credentials = readTelegramCommandCredentials();
+  if (!credentials) {
+    console.log("Telegram commands disabled (missing token/chat or notifications disabled)");
+    return;
+  }
+  const handlers = createLaneCommandHandlers({
+    getCronHealth: () => ({
+      running,
+      schedule,
+      command,
+      lastTickStartedAt,
+      lastTickEndedAt,
+      lastTickExitCode,
+    }),
+  });
+  telegramCommandLoop = startTelegramCommandLoop({
+    client: new TelegramBotClient(credentials.token),
+    allowedChatId: credentials.chatId,
+    dispatch: createCommandDispatcher(handlers),
+    logger: consoleTelegramLogger,
+  });
+  console.log("Telegram command loop started (/help /status /lanes /lane)");
 }
 
 async function main(): Promise<void> {
@@ -94,6 +130,7 @@ async function main(): Promise<void> {
   console.log(`Command: ${command}`);
   await notifyTelegram(`Ghillie alpha cron started\nschedule=${schedule}\ncommand=${command}`);
   startHealthServer();
+  startTelegramCommands();
   cron.schedule(schedule, async () => {
     if (running) {
       const skippedAt = new Date().toISOString();

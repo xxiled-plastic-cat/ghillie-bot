@@ -37,6 +37,8 @@ async function main(): Promise<void> {
     const parsed = parseExecutionQuotePayload(result.data);
     console.log(`unsigned txns: ${parsed.unsignedTxnsBase64.length}`);
     console.log(`userSignIndexes: ${JSON.stringify(parsed.userSignIndexes ?? "all")}`);
+    console.log(`createEscrowIndex: ${parsed.createEscrowIndex ?? "n/a"}`);
+    console.log(`known escrowAppId from quote: ${parsed.escrowAppId ?? "n/a"}`);
     if (!submit) {
       console.log("Dry run only (pass --submit to sign and sendRawTransaction).");
       console.log(JSON.stringify(result.data, null, 2).slice(0, 4_000));
@@ -51,6 +53,7 @@ async function main(): Promise<void> {
       unsignedTxnsBase64: parsed.unsignedTxnsBase64,
       userSignIndexes: parsed.userSignIndexes,
       knownEscrowAppId: parsed.escrowAppId,
+      createEscrowIndex: parsed.createEscrowIndex,
     });
     console.log(JSON.stringify(submitted, null, 2));
   } finally {

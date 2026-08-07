@@ -118,6 +118,26 @@ test("parseExecutionQuotePayload reads nested group.unsignedTxnsBase64 (live Ama
     ],
   });
   assert.deepEqual(parsed.unsignedTxnsBase64, ["qqqq", "wwww"]);
+  assert.equal(parsed.createEscrowIndex, 1);
+});
+
+test("extractCreatedAppId finds inner application-index (bigint-safe)", async () => {
+  const { extractCreatedAppId } = await import("../algorand/submitUnsigned.js");
+  assert.equal(
+    extractCreatedAppId({
+      "confirmed-round": 63852138n,
+      "inner-txns": [{ "application-index": 3666534173n }],
+    }),
+    3666534173,
+  );
+  assert.equal(
+    extractCreatedAppId({
+      txn: { type: "pay" },
+      "confirmed-round": 1,
+    }),
+    undefined,
+  );
+  assert.equal(extractCreatedAppId({ applicationIndex: 42 }), 42);
 });
 
 test("regroupUnsignedTransactions repairs mismatched Amarok group digests", () => {
@@ -176,7 +196,12 @@ test("scanFromAmarok adapts markets and books", () => {
   });
   assert.equal(scan.markets.length, 1);
   assert.equal(scan.rewardMarkets.length, 1);
-  assert.ok(scan.orderbooks.get(3100000001)?.yesBid === 0.42);
+  const book = scan.orderbooks.get(3100000001);
+  assert.ok(book?.yesBid === 0.42);
+  assert.ok((book?.yesSideOrders.bids.length ?? 0) > 0);
+  assert.ok((book?.yesSideOrders.asks.length ?? 0) > 0);
+  assert.ok((book?.yesSideOrders.bids[0]?.price ?? 0) === 0.42);
+  assert.ok((book?.yesSideOrders.asks[0]?.price ?? 0) === 0.44);
 });
 
 test("scanFromAmarok fills rewardMarkets from rewardsPayload without opportunities", () => {

@@ -23,6 +23,9 @@ export interface BotStateStore {
   objectKey(stateKey: string): string;
   getJson(stateKey: string): Promise<unknown | undefined>;
   putJson(stateKey: string, body: unknown): Promise<string>;
+  /** Public-read showcase JSON at `{prefix}/public/{name}.json` (name has no slashes). */
+  getPublicJson(name: string): Promise<unknown | undefined>;
+  putPublicJson(name: string, body: unknown): Promise<string>;
 }
 
 export function isSpacesConfigured(config: BotStateStoreConfig): boolean {
@@ -83,6 +86,14 @@ function objectKeyFor(prefix: string, stateKey: string): string {
   return joinKey(prefix, "bot-states", `${safeKey}.json`);
 }
 
+function publicObjectKeyFor(prefix: string, name: string): string {
+  const safeName = name.trim().replace(/\.json$/i, "");
+  if (!safeName || safeName.includes("/") || safeName.includes("..")) {
+    throw new Error(`Invalid public object name: ${JSON.stringify(name)}`);
+  }
+  return joinKey(prefix, "public", `${safeName}.json`);
+}
+
 export class LocalFilesystemBotStateStore implements BotStateStore {
   private readonly rootDir: string;
   private readonly prefix: string;
@@ -109,6 +120,25 @@ export class LocalFilesystemBotStateStore implements BotStateStore {
 
   async putJson(stateKey: string, body: unknown): Promise<string> {
     const key = this.objectKey(stateKey);
+    const filePath = this.resolvePath(key);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify(body), "utf8");
+    return key;
+  }
+
+  async getPublicJson(name: string): Promise<unknown | undefined> {
+    const key = publicObjectKeyFor(this.prefix, name);
+    try {
+      const text = await readFile(this.resolvePath(key), "utf8");
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      if (isErrnoNotFound(error)) return undefined;
+      throw error;
+    }
+  }
+
+  async putPublicJson(name: string, body: unknown): Promise<string> {
+    const key = publicObjectKeyFor(this.prefix, name);
     const filePath = this.resolvePath(key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, JSON.stringify(body), "utf8");
@@ -182,6 +212,39 @@ export class SpacesBotStateStore implements BotStateStore {
         Body: JSON.stringify(body),
         ContentType: "application/json",
         CacheControl: "no-store",
+      }),
+    );
+    return key;
+  }
+
+  async getPublicJson(name: string): Promise<unknown | undefined> {
+    const key = publicObjectKeyFor(this.prefix, name);
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+      const text = await response.Body?.transformToString();
+      if (!text) return undefined;
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
+  }
+
+  async putPublicJson(name: string, body: unknown): Promise<string> {
+    const key = publicObjectKeyFor(this.prefix, name);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: JSON.stringify(body),
+        ContentType: "application/json",
+        ACL: "public-read",
+        CacheControl: "public, max-age=60",
       }),
     );
     return key;

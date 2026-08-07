@@ -49,3 +49,16 @@ test("LocalFilesystemBotStateStore rejects unsafe state keys", () => {
   assert.throws(() => store.objectKey("../escape"), /Invalid bot state key/);
   assert.throws(() => store.objectKey("a/b"), /Invalid bot state key/);
 });
+
+test("LocalFilesystemBotStateStore round-trips public JSON", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "ghillie-public-"));
+  try {
+    const store = new LocalFilesystemBotStateStore({ rootDir, prefix: "ghillie-bot" });
+    assert.equal(await store.getPublicJson("pnl"), undefined);
+    const key = await store.putPublicJson("pnl", { schemaVersion: 1, pnlAvailable: false });
+    assert.equal(key, "ghillie-bot/public/pnl.json");
+    assert.deepEqual(await store.getPublicJson("pnl"), { schemaVersion: 1, pnlAvailable: false });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});

@@ -1,12 +1,12 @@
 import dotenv from "dotenv";
 import algosdk from "algosdk";
 
-import { readAlphaConfig } from "./alphaConfig.js";
 import { AlphaSdkClient } from "./alphaClient.js";
 import { loadAlphaScan, loadAmarokMarket, type AlphaScanResult } from "./alphaMarketScanner.js";
 import { rankRewardCandidates } from "./alphaRewardScanner.js";
 import { scanParity } from "./alphaParityScanner.js";
 import { saveAlphaState, loadAlphaState } from "./alphaStateStore.js";
+import { loadAlphaConfig } from "./laneOverrideStore.js";
 import {
   printLiveSummary,
   printMarketDetail,
@@ -40,7 +40,7 @@ dotenv.config();
 const DEFAULT_REWARD_HISTORY_RECEIVER = "65GJKPMEYLR2C2GHFIAUKF2CFDE6IXDB3LUTOVJ424LBMMEWJ6UXCHCBZQ";
 
 async function runRewardHistoryCommand(receiverArg: string | undefined, senderArg: string | undefined): Promise<void> {
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   const receiver = (receiverArg || process.env.ALPHA_REWARD_HISTORY_RECEIVER || DEFAULT_REWARD_HISTORY_RECEIVER).trim();
   const sender = (senderArg || ALPHA_REWARD_HISTORY_SENDER).trim();
   if (!algosdk.isValidAddress(receiver)) {
@@ -80,7 +80,7 @@ async function runRewardHistoryCommand(receiverArg: string | undefined, senderAr
 }
 
 async function runCapitalReportCommand(): Promise<void> {
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   const walletAddress = config.walletAddress;
   if (!walletAddress || !algosdk.isValidAddress(walletAddress)) {
     throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for capital-report");
@@ -145,6 +145,14 @@ async function runCapitalReportCommand(): Promise<void> {
   const updatedState = mergeCapitalLedgerIntoState(state, ledger.flows, ledger.scanMeta);
   await saveAlphaState(config.stateKey, updatedState);
   printCapitalLedgerReport(ledger, walletAddress);
+  try {
+    const { buildAlphaDashboardSnapshot } = await import("./alphaDashboardData.js");
+    await buildAlphaDashboardSnapshot();
+  } catch (error) {
+    console.warn(
+      `[ghillie-public-pnl] publish after capital-report failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 type CancelOrderArgs = {
@@ -193,7 +201,7 @@ function parseCancelOrderArgs(args: string[]): CancelOrderArgs {
 
 async function runCancelOrderCommand(args: string[]): Promise<void> {
   const parsed = parseCancelOrderArgs(args);
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   const walletAddress = config.walletAddress;
   if (!walletAddress || !algosdk.isValidAddress(walletAddress)) {
     throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for cancel-order");
@@ -304,7 +312,7 @@ function formatError(error: unknown): string {
 async function buildScan(liveSigner = false) {
   const startedAt = Date.now();
   logStartupDebug(`buildScan start liveSigner=${liveSigner}`);
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   logStartupDebug(
     `buildScan config loaded matcherAppId=${config.matcherAppId} usdcAssetId=${config.usdcAssetId} wallet=${config.walletAddress ?? "none"} amarokMcp=${config.amarokMcpUrl}`,
   );
@@ -337,7 +345,7 @@ async function runRewardsCommand(): Promise<void> {
 
 async function runMarketCommand(arg: string | undefined): Promise<void> {
   if (!arg) throw new Error("Usage: npm run alpha:market -- <slug-or-id>");
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   const { market, orderbook } = await loadAmarokMarket(config, arg);
   printMarketDetail(market, orderbook);
 }
@@ -349,10 +357,10 @@ async function runPaperCommand(): Promise<void> {
 }
 
 async function runPaperWatchCommand(): Promise<void> {
-  const config = readAlphaConfig();
+  const initial = await loadAlphaConfig();
   const loop = async () => {
     try {
-      const { scan } = await buildScan(false);
+      const { config, scan } = await buildScan(false);
       const state = await runPaperTick(scan, config);
       printPaperWatch(state);
     } catch (error) {
@@ -361,11 +369,11 @@ async function runPaperWatchCommand(): Promise<void> {
     }
   };
   await loop();
-  setInterval(loop, config.scanIntervalMs);
+  setInterval(loop, initial.scanIntervalMs);
 }
 
 async function runPaperReportCommand(): Promise<void> {
-  const config = readAlphaConfig();
+  const config = await loadAlphaConfig();
   const state = await loadPaperReport(config);
   printPaperReport(state);
 }
@@ -452,6 +460,16 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
   }
   if (result.actions.length === 0) console.log("No actions.");
   printLiveSummary(result.state, result.walletUsdcBalanceUsd, result.walletAlgoBalance, config, rewardContextFromScan(scan, config.walletAddress));
+  if (mode === "live") {
+    try {
+      const { buildAlphaDashboardSnapshot } = await import("./alphaDashboardData.js");
+      await buildAlphaDashboardSnapshot();
+    } catch (error) {
+      console.warn(
+        `[ghillie-public-pnl] publish after live tick failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   logStartupDebug(`runLiveCommand end mode=${mode} elapsed_ms=${Date.now() - startedAt}`);
 }
 

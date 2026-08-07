@@ -134,6 +134,16 @@ export default function App() {
       </header>
 
       <main className="content">
+        <section className="card warning">
+          <h2>Deprecated</h2>
+          <p>
+            This local ops dashboard is deprecated. Use the public Ghillie showcase on{" "}
+            <a href="https://amarok.compx.io/user-agents" target="_blank" rel="noopener noreferrer">
+              amarok.compx.io/user-agents
+            </a>
+            .
+          </p>
+        </section>
         {error && <section className="card error">Error: {error}</section>}
         {loading && !snapshot && <section className="card">Loading dashboard...</section>}
 

@@ -515,5 +515,14 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
     snapshot,
   });
 
+  try {
+    const { publishGhilliePublicPnl } = await import("./publicPnl.js");
+    await publishGhilliePublicPnl(snapshot);
+  } catch (error) {
+    snapshot.health.errors.push(
+      `Public PnL publish skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   return snapshot;
 }
