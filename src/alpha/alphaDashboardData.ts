@@ -1,6 +1,7 @@
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
 
 import { readAlphaConfig } from "./alphaConfig.js";
+import { loadAlphaScan } from "./alphaMarketScanner.js";
 import { AlphaSdkClient, fromMicroUnits } from "./alphaClient.js";
 import { buildCapitalLedger, mergeCapitalLedgerIntoState, type CapitalLedger } from "./capitalLedger.js";
 import { summarizeLiveExposure } from "./alphaFormatter.js";
@@ -350,15 +351,19 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
   const rewardOrderbooks = new Map<number, AlphaOrderbook>();
 
   try {
-    const markets = await sdkClient.getLiveMarkets();
+    const scan = await loadAlphaScan(config);
+    const markets = [...new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market])).values()];
     marketsByAppId = new Map(markets.map((market) => [market.marketAppId, market]));
     slugByMarketAppId = new Map(
       markets
         .filter((market) => typeof market.slug === "string" && market.slug.length > 0)
         .map((market) => [market.marketAppId, market.slug as string]),
     );
+    for (const [marketAppId, book] of scan.orderbooks) {
+      rewardOrderbooks.set(marketAppId, book);
+    }
   } catch (error) {
-    errors.push(`Live market metadata unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    errors.push(`Amarok market metadata unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const rewardMarketAppIds = new Set(
@@ -367,13 +372,10 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
       .map((order) => order.marketAppId),
   );
   for (const marketAppId of rewardMarketAppIds) {
+    if (rewardOrderbooks.has(marketAppId)) continue;
     const market = marketsByAppId.get(marketAppId);
     if (!market) continue;
-    try {
-      rewardOrderbooks.set(marketAppId, await sdkClient.getOrderbook(market));
-    } catch (error) {
-      errors.push(`Reward orderbook unavailable for ${marketAppId}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    errors.push(`Reward orderbook unavailable for ${marketAppId} in Amarok scan`);
   }
 
   const exposure = summarizeLiveExposure(state, config, {

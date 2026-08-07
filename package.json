@@ -1,9 +1,16 @@
 {
-  "name": "nuckelavee",
+  "name": "ghillie-bot",
   "version": "1.0.0",
-  "description": "Nuckelavee v1 read-only Div3rsaFi scanner",
+  "description": "Ghillie-bot: Alpha Arcade user-agent (Amarok MCP + ZeroSignal)",
   "type": "module",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xxiled-plastic-cat/ghillie-bot.git"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "scan": "tsx src/index.ts scan",
     "watch": "tsx src/index.ts watch",
@@ -32,6 +39,28 @@
     "alpha:dashboard:web:build": "npm --prefix apps/alpha-dashboard run build",
     "alpha:dashboard:web:typecheck": "npm --prefix apps/alpha-dashboard run typecheck",
     "alpha:dashboard": "concurrently \"npm run alpha:dashboard:api\" \"npm run alpha:dashboard:web\"",
+    "ghillie:scan": "npm run alpha:scan",
+    "ghillie:rewards": "npm run alpha:rewards",
+    "ghillie:market": "npm run alpha:market",
+    "ghillie:paper": "npm run alpha:paper",
+    "ghillie:paper-report": "npm run alpha:paper-report",
+    "ghillie:live-dry-run": "npm run alpha:live-dry-run",
+    "ghillie:live": "npm run alpha:live",
+    "ghillie:cron": "npm run alpha:cron",
+    "ghillie:cron:live": "npm run alpha:cron:live",
+    "ghillie:cron:live:once": "npm run alpha:cron:live:once",
+    "ghillie:dashboard": "npm run alpha:dashboard",
+    "amarok:discovery": "tsx src/cli/amarokDiscovery.ts",
+    "amarok:opportunities": "tsx src/cli/amarokOpportunities.ts",
+    "amarok:rewards": "tsx src/cli/amarokLaneList.ts rewards",
+    "amarok:spreads": "tsx src/cli/amarokLaneList.ts spreads",
+    "amarok:parity": "tsx src/cli/amarokLaneList.ts parity",
+    "amarok:execution-dry": "tsx src/cli/amarokExecutionDry.ts",
+    "zs:smoke": "tsx src/cli/zsSmoke.ts",
+    "docker:build": "docker build -t ghillie-bot .",
+    "docker:run": "docker run --rm --env-file .env -p 8788:8788 ghillie-bot",
+    "docker:smoke": "docker build -t ghillie-bot . && docker run --rm --env-file .env ghillie-bot smoke",
+    "docker:once": "docker build -t ghillie-bot . && docker run --rm --env-file .env ghillie-bot once",
     "alpha:typecheck": "tsc --noEmit",
     "poly:scan": "tsx src/polymarket/polyCommands.ts scan",
     "poly:rewards": "tsx src/polymarket/polyCommands.ts rewards",
@@ -42,30 +71,28 @@
     "poly:cron": "tsx src/polymarket/polyCron.ts",
     "poly:cron:once": "tsx src/polymarket/polyCron.ts --once",
     "poly:typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts"
+    "test": "tsx --test src/alpha/capitalLedger.test.ts src/alpha/liveFillLedger.test.ts src/alpha/inventoryView.test.ts src/alpha/alphaRiskManager.test.ts src/alpha/settlement.test.ts src/alpha/accountancyLedgers.test.ts src/alpha/alphaStateStore.test.ts src/alpha/telegramReports.test.ts src/alpha/alphaMarketScanner.test.ts src/alpha/planReview/planReview.test.ts src/integrations/amarok/amarok.test.ts src/integrations/zerosignal/zerosignal.test.ts src/integrations/storage/botStateStore.test.ts src/integrations/storage/operatorPreferences.test.ts"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@algorandfoundation/algokit-utils": "^9.2.0",
     "@alpha-arcade/sdk": "^0.3.7",
+    "@aws-sdk/client-s3": "^3.1101.0",
     "@div3rsafi/sdk": "^0.1.0-iGA.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "algosdk": "^3.5.2",
     "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.45.2",
     "node-cron": "^4.2.1",
-    "postgres": "^3.4.9",
+    "openai": "^6.49.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "concurrently": "^9.2.1",
-    "drizzle-kit": "^0.31.10"
+    "concurrently": "^9.2.1"
   }
 }

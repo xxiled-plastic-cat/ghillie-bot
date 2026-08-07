@@ -159,7 +159,7 @@ async function runScanOnceWithOptions(
   const averageLadderTwoSidedRatio = getAverageLadderTwoSidedRatio(filteredLadders);
 
   if (printVerbose) {
-    console.log("NUCKELAVEE v1");
+    console.log("GHILLIE v1");
     console.log("");
     if (options.underlying) {
       console.log(`Underlying filter: ${options.underlying.toUpperCase()}`);

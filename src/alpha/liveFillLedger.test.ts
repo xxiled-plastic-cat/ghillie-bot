@@ -10,9 +10,11 @@ import {
   applyLiveFillEvent,
   applyLiveFillEvents,
   buildPlaceTimeFillEvent,
+  classifyClosedOrdersAgainstInventory,
   detectClosedCancels,
   detectFillDeltasFromWallet,
   escrowCursorKey,
+  inventorySideKey,
   liveFillEventId,
 } from "./liveFillLedger.js";
 
@@ -114,6 +116,48 @@ describe("liveFillLedger", () => {
     assert.equal(cancelled[0]?.remainingShares, 5);
     assert.equal(state.realisedPnl, 0);
     assert.equal(Object.keys(state.positionsByMarket).length, 0);
+  });
+
+  it("infers ask fill on close when inventory is missing the unfilled size", () => {
+    const state = emptyAlphaState(100);
+    state.positionsByMarket[String(APP_ID)] = {
+      marketId: "m1",
+      marketAppId: APP_ID,
+      title: "Test Market",
+      yesShares: 10,
+      noShares: 0,
+      avgYesCost: 0.4,
+      avgNoCost: 0,
+      realisedPnl: 0,
+      unrealisedPnl: 0,
+    };
+    const closed = [order({ liveEscrowAppId: 91, side: "ask", outcome: "YES", price: 0.55, sizeShares: 4, filledShares: 0 })];
+    const classified = classifyClosedOrdersAgainstInventory({
+      closedOrders: closed,
+      cursor: {},
+      stateSharesBySide: new Map([[inventorySideKey(APP_ID, "YES"), 10]]),
+      chainSharesBySide: new Map([[inventorySideKey(APP_ID, "YES"), 6]]),
+    });
+    assert.equal(classified.fills.length, 1);
+    assert.equal(classified.cancels.length, 0);
+    assert.equal(classified.fills[0]?.shares, 4);
+    const result = applyLiveFillEvent(state, classified.fills[0]!);
+    assert.equal(result.applied, true);
+    assert.match(result.message, /^Live exit fill/);
+    assert.equal(getPosition(state, APP_ID)?.yesShares, 6);
+  });
+
+  it("treats ask close as cancel when inventory still holds the shares", () => {
+    const closed = [order({ liveEscrowAppId: 92, side: "ask", outcome: "YES", sizeShares: 4, filledShares: 0 })];
+    const classified = classifyClosedOrdersAgainstInventory({
+      closedOrders: closed,
+      cursor: {},
+      stateSharesBySide: new Map([[inventorySideKey(APP_ID, "YES"), 10]]),
+      chainSharesBySide: new Map([[inventorySideKey(APP_ID, "YES"), 10]]),
+    });
+    assert.equal(classified.fills.length, 0);
+    assert.equal(classified.cancels.length, 1);
+    assert.equal(classified.cancels[0]?.remainingShares, 4);
   });
 
   it("applies remaining fill on close then ignores restart replay via cursor", () => {

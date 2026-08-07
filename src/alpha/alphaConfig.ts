@@ -1,8 +1,17 @@
 import algosdk from "algosdk";
 
+import type { ZeroSignalReasoningEffort } from "../integrations/zerosignal/config.js";
+
 export type AlphaMode = "scan" | "paper" | "live-dry-run" | "live";
 
 export type AlphaConfig = {
+  amarokMcpUrl: string;
+  maxDailyX402BaseUnits: bigint;
+  /**
+   * Alpha Arcade partners API key. Still required for SDK venue-ops that Amarok
+   * does not expose yet (wallet open-order sync, and some market metadata paths).
+   * Not used for research scan or limit placement (those go through Amarok MCP).
+   */
   apiKey?: string;
   algodServer: string;
   algodToken?: string;
@@ -15,7 +24,6 @@ export type AlphaConfig = {
   maxMarketsPerScan: number;
   scanIntervalMs: number;
   streamTimeoutMs: number;
-  rewardsRequireApiKey: boolean;
   minDailyRewardUsd: number;
   minRewardZoneCents: number;
   rewardZoneBufferCents: number;
@@ -104,6 +112,8 @@ export type AlphaConfig = {
   paperStartingBalanceUsd: number;
   enableLiveTrading: boolean;
   confirmRisk: boolean;
+  /** Override OPENAI_REASONING_EFFORT for plan review only. */
+  planReviewReasoningEffort?: ZeroSignalReasoningEffort;
   walletAddress?: string;
   walletMnemonic?: string;
   stateKey: string;
@@ -136,10 +146,18 @@ function readCompetition(key: string, fallback: AlphaConfig["maxRewardCompetitio
   return fallback;
 }
 
+function readPlanReviewReasoningEffort(): ZeroSignalReasoningEffort | undefined {
+  const raw = process.env.ALPHA_PLAN_REVIEW_REASONING_EFFORT?.toLowerCase();
+  if (raw === "low" || raw === "medium" || raw === "high") return raw;
+  return undefined;
+}
+
 export function readAlphaConfig(): AlphaConfig {
-  const walletMnemonic = process.env.ALPHA_WALLET_MNEMONIC || process.env.PAYER_MNEMONIC || undefined;
+  const walletMnemonic = process.env.ALPHA_WALLET_MNEMONIC || undefined;
   const derivedWalletAddress = walletMnemonic ? algosdk.mnemonicToSecretKey(walletMnemonic).addr.toString() : undefined;
   return {
+    amarokMcpUrl: process.env.AMAROK_MCP_URL || "https://amarok-mcp.compx.io/mcp",
+    maxDailyX402BaseUnits: BigInt(Math.max(0, Math.floor(readNumber("MAX_DAILY_X402_BASE_UNITS", 5_000_000)))),
     apiKey: process.env.ALPHA_API_KEY || undefined,
     algodServer: process.env.ALPHA_ALGOD_SERVER || "https://mainnet-api.4160.nodely.io",
     algodToken: process.env.ALGORAND_TOKEN || undefined,
@@ -152,7 +170,6 @@ export function readAlphaConfig(): AlphaConfig {
     maxMarketsPerScan: readInt("ALPHA_MAX_MARKETS_PER_SCAN", 0),
     scanIntervalMs: readInt("ALPHA_SCAN_INTERVAL_MS", 10_000),
     streamTimeoutMs: readInt("ALPHA_STREAM_TIMEOUT_MS", 15_000),
-    rewardsRequireApiKey: readBool("ALPHA_REWARDS_REQUIRE_API_KEY", false),
     minDailyRewardUsd: readNumber("ALPHA_MIN_DAILY_REWARD_USD", 1),
     minRewardZoneCents: readNumber("ALPHA_MIN_REWARD_ZONE_CENTS", 2),
     rewardZoneBufferCents: readNumber("ALPHA_REWARD_ZONE_BUFFER_CENTS", 0.5),
@@ -245,6 +262,7 @@ export function readAlphaConfig(): AlphaConfig {
     paperStartingBalanceUsd: readNumber("ALPHA_PAPER_STARTING_BALANCE_USD", 50),
     enableLiveTrading: readBool("ALPHA_ENABLE_LIVE_TRADING", false),
     confirmRisk: readBool("ALPHA_CONFIRM_RISK", false),
+    planReviewReasoningEffort: readPlanReviewReasoningEffort(),
     walletAddress: process.env.ALPHA_WALLET_ADDRESS || derivedWalletAddress,
     walletMnemonic,
     stateKey: process.env.ALPHA_STATE_KEY || "alpha",
@@ -256,8 +274,9 @@ export function validateLiveConfig(config: AlphaConfig): void {
   const failures: string[] = [];
   if (!config.enableLiveTrading) failures.push("ALPHA_ENABLE_LIVE_TRADING must be true");
   if (!config.confirmRisk) failures.push("ALPHA_CONFIRM_RISK must be true");
+  if (!config.amarokMcpUrl) failures.push("AMAROK_MCP_URL is required");
   if (!config.walletAddress) failures.push("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required");
-  if (!config.walletMnemonic) failures.push("ALPHA_WALLET_MNEMONIC or PAYER_MNEMONIC is required");
+  if (!config.walletMnemonic) failures.push("ALPHA_WALLET_MNEMONIC is required");
   if (failures.length > 0) {
     throw new Error(`Live mode refused to start:\n- ${failures.join("\n- ")}`);
   }

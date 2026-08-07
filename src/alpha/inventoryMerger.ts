@@ -139,7 +139,7 @@ export async function runInventoryMergeLane(input: {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[alpha-live] inventory merge failed market=${position.marketAppId}: ${message}`);
+      console.error(`[ghillie-live] inventory merge failed market=${position.marketAppId}: ${message}`);
       actions.push({ kind: "skip", message: `Inventory merge failed ${title}: ${message}` });
     }
   }

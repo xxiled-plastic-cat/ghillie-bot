@@ -125,9 +125,9 @@ export default function App() {
     <div className="app-shell">
       <header className="hero">
         <div className="hero-overlay">
-          <img className="hero-mark" src="/assets/nuckelavee-mark.png" alt="Nuckelavee emblem" />
+          <img className="hero-mark" src="/assets/ghillie-mark.png" alt="Ghillie emblem" />
           <div>
-            <h1>Nuckelavee Alpha Dashboard</h1>
+            <h1>Ghillie Alpha Dashboard</h1>
             <p>Read-only position and digest monitor</p>
           </div>
         </div>

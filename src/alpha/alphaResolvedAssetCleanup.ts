@@ -5,17 +5,29 @@
  * `realisedPnl`. Live tick settlement PnL for resolved free shares belongs
  * solely to `runResolvedClaimLane`. Prefer claim-then-close for dust so the
  * wallet is cleaned without double-counting trading PnL in bot ledgers.
+ *
+ * Market directory comes from wallet footprint (positions + open orders) plus
+ * live markets for slug enrichment — not a persisted market-status table.
  */
 import algosdk from "algosdk";
-import type { OpenOrder } from "@alpha-arcade/sdk";
+import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
 
 import { readAlphaConfig } from "./alphaConfig.js";
 import { AlphaSdkClient, fromMicroUnits } from "./alphaClient.js";
-import { loadKnownAlphaMarkets, type KnownAlphaMarket } from "./alphaMarketStatusStore.js";
+import type { AlphaMarket } from "./alphaTypes.js";
 
 type CleanupOptions = {
   execute: boolean;
   limit?: number;
+};
+
+type KnownAlphaMarket = {
+  marketAppId: number;
+  marketId: string | null;
+  slug: string | null;
+  isResolved: boolean;
+  isLive: boolean;
+  isClosed: boolean;
 };
 
 type AccountAssetHolding = {
@@ -90,7 +102,7 @@ function formatMarketLabel(market: Pick<KnownAlphaMarket, "marketAppId" | "marke
 }
 
 function printSummary(summary: CleanupSummary): void {
-  console.log("NUCKELAVEE ALPHA RESOLVED ASSET CLEANUP");
+  console.log("GHILLIE ALPHA RESOLVED ASSET CLEANUP");
   console.log("");
   console.log(`Mode: ${summary.dryRun ? "dry-run" : "execute"}`);
   console.log(`Wallet: ${summary.walletAddress}`);
@@ -123,7 +135,7 @@ function resolveWalletAddressAndSigner(): { walletAddress: string; signer: algos
   const config = readAlphaConfig();
   const mnemonic = (config.walletMnemonic ?? "").trim();
   if (!mnemonic) {
-    throw new Error("Resolved asset cleanup requires ALPHA_WALLET_MNEMONIC or PAYER_MNEMONIC.");
+    throw new Error("Resolved asset cleanup requires ALPHA_WALLET_MNEMONIC.");
   }
 
   const signer = algosdk.mnemonicToSecretKey(mnemonic);
@@ -146,6 +158,20 @@ function hasRemainingQuantity(order: OpenOrder): boolean {
   return quantity - filled > 0;
 }
 
+function collectMarketAppIds(orders: OpenOrder[], positions: WalletPosition[], liveMarkets: AlphaMarket[]): number[] {
+  const ids = new Set<number>();
+  for (const order of orders) {
+    if (Number.isFinite(order.marketAppId) && order.marketAppId > 0) ids.add(order.marketAppId);
+  }
+  for (const position of positions) {
+    if (Number.isFinite(position.marketAppId) && position.marketAppId > 0) ids.add(position.marketAppId);
+  }
+  for (const market of liveMarkets) {
+    if (Number.isFinite(market.marketAppId) && market.marketAppId > 0) ids.add(market.marketAppId);
+  }
+  return [...ids];
+}
+
 async function loadWalletOpenOrdersWithFallback(
   liveClient: AlphaSdkClient,
   walletAddress: string,
@@ -155,7 +181,7 @@ async function loadWalletOpenOrdersWithFallback(
     return await liveClient.getWalletOpenOrders(walletAddress);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-cleanup] wallet order lookup via API failed; trying per-market fallback: ${message}`);
+    console.error(`[ghillie-cleanup] wallet order lookup via API failed; trying per-market fallback: ${message}`);
   }
 
   const fallbackResults = await Promise.allSettled(
@@ -169,27 +195,70 @@ async function loadWalletOpenOrdersWithFallback(
   return orders;
 }
 
+async function buildKnownMarketsFromWallet(
+  liveClient: AlphaSdkClient,
+  walletAddress: string,
+): Promise<{ knownMarkets: KnownAlphaMarket[]; walletOrders: OpenOrder[] }> {
+  const [positionsResult, liveMarketsResult] = await Promise.allSettled([
+    liveClient.getPositions(walletAddress),
+    liveClient.getLiveMarkets(),
+  ]);
+  const positions = positionsResult.status === "fulfilled" ? positionsResult.value : [];
+  if (positionsResult.status === "rejected") {
+    const message = positionsResult.reason instanceof Error ? positionsResult.reason.message : String(positionsResult.reason);
+    console.error(`[ghillie-cleanup] wallet positions lookup failed; continuing without positions: ${message}`);
+  }
+  const liveMarkets = liveMarketsResult.status === "fulfilled" ? liveMarketsResult.value : [];
+  if (liveMarketsResult.status === "rejected") {
+    const message =
+      liveMarketsResult.reason instanceof Error ? liveMarketsResult.reason.message : String(liveMarketsResult.reason);
+    console.error(`[ghillie-cleanup] live markets lookup failed; continuing without live enrichment: ${message}`);
+  }
+
+  const seedIds = collectMarketAppIds([], positions, liveMarkets);
+  const walletOrders = await loadWalletOpenOrdersWithFallback(liveClient, walletAddress, seedIds);
+  const marketAppIds = collectMarketAppIds(walletOrders, positions, liveMarkets);
+
+  const liveByAppId = new Map(liveMarkets.map((market) => [market.marketAppId, market]));
+  const positionByAppId = new Map(positions.map((position) => [position.marketAppId, position]));
+
+  const knownMarkets: KnownAlphaMarket[] = [];
+  for (const marketAppId of marketAppIds) {
+    const live = liveByAppId.get(marketAppId);
+    const position = positionByAppId.get(marketAppId);
+    const resolution = await liveClient.getMarketResolution(marketAppId);
+    const isResolved = resolution.isResolved === true;
+    const isClosed = isResolved || resolution.isActivated === false;
+    const isLive = !isClosed && resolution.isActivated !== false;
+    knownMarkets.push({
+      marketAppId,
+      marketId: live?.id ?? null,
+      slug: live?.slug ?? (typeof position?.title === "string" ? position.title : null),
+      isResolved,
+      isLive,
+      isClosed,
+    });
+  }
+
+  return { knownMarkets, walletOrders };
+}
+
 export async function runResolvedAssetCleanup(options: CleanupOptions): Promise<void> {
   console.log(
-    "[alpha-cleanup] CLI wallet ASA cleanup only — does not load/save bot state or adjust realisedPnl (claim lane owns trading PnL).",
+    "[ghillie-cleanup] CLI wallet ASA cleanup only — does not load/save bot state or adjust realisedPnl (claim lane owns trading PnL).",
   );
   const config = readAlphaConfig();
   const { walletAddress, signer } = resolveWalletAddressAndSigner();
   const algod = new algosdk.Algodv2(config.algodToken ?? "", config.algodServer, "");
 
-  const knownMarkets = await loadKnownAlphaMarkets();
+  const liveClient = new AlphaSdkClient(config, false);
+  const { knownMarkets, walletOrders } = await buildKnownMarketsFromWallet(liveClient, walletAddress);
   const resolvedMarkets = knownMarkets.filter((market) => market.isResolved);
   const creatorToMarket = new Map<string, KnownAlphaMarket>();
   for (const market of knownMarkets) {
     creatorToMarket.set(algosdk.getApplicationAddress(market.marketAppId).toString(), market);
   }
 
-  const liveClient = new AlphaSdkClient(config, false);
-  const walletOrders = await loadWalletOpenOrdersWithFallback(
-    liveClient,
-    walletAddress,
-    knownMarkets.map((market) => market.marketAppId),
-  );
   const activeBidMarkets = new Set(
     walletOrders.filter((order) => order.side === 1 && hasRemainingQuantity(order)).map((order) => order.marketAppId),
   );

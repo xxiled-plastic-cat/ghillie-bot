@@ -1,0 +1,21 @@
+# ZeroSignal zs-proxy defaults for the Ghillie container sidecar.
+# Override via PROXY_* env vars on DigitalOcean if needed.
+algod:
+  network: "mainnet"
+
+server:
+  listen: "127.0.0.1:8080"
+
+# Direct to the model operator (no *.belt.algo.xyz relay). Re-enable with
+# privacy: true or PROXY_ZS_PRIVACY=true if you want relay privacy.
+zs:
+  privacy: false
+  allow_privacy_override: true
+
+spend:
+  daily_cap_usdc: 5.00
+  per_request_cap_usdc: 1.00
+
+logging:
+  level: info
+  format: text

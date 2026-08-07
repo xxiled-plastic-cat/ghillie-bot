@@ -183,7 +183,7 @@ export async function runResolvedClaimLane(input: {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[alpha-live] resolved claim failed market=${position.marketAppId} side=${side}: ${message}`);
+        console.error(`[ghillie-live] resolved claim failed market=${position.marketAppId} side=${side}: ${message}`);
         actions.push({ kind: "skip", message: `Resolved claim failed ${title} ${side}: ${sideDesc}; error: ${message}` });
       }
     }

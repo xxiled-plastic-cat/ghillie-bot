@@ -3,7 +3,7 @@ import algosdk from "algosdk";
 
 import { readAlphaConfig } from "./alphaConfig.js";
 import { AlphaSdkClient } from "./alphaClient.js";
-import { loadAlphaScan, type AlphaScanResult } from "./alphaMarketScanner.js";
+import { loadAlphaScan, loadAmarokMarket, type AlphaScanResult } from "./alphaMarketScanner.js";
 import { rankRewardCandidates } from "./alphaRewardScanner.js";
 import { scanParity } from "./alphaParityScanner.js";
 import { saveAlphaState, loadAlphaState } from "./alphaStateStore.js";
@@ -17,16 +17,22 @@ import {
   summarizeLiveExposure,
 } from "./alphaFormatter.js";
 import type { AlphaBotState } from "./alphaTypes.js";
-import type { RewardRateContext } from "./rewardRateEstimator.js";
 import { runPaperTick, loadPaperReport } from "./paperTrader.js";
 import type { LiveAction } from "./liveTrader.js";
 import { runLiveTick } from "./liveTrader.js";
-import { notifyTelegram, notifyTelegramThrottled, readSkipNoticeThrottleMinutes } from "./telegramNotifier.js";
+import {
+  notifyTelegramReport,
+  notifyTelegramThrottled,
+  readSkipNoticeThrottleMinutes,
+} from "./telegramNotifier.js";
+import {
+  formatDailySummaryReport,
+  formatTickDigestReport,
+  rewardContextFromScan,
+} from "./telegramReports.js";
 import { runResolvedAssetCleanup } from "./alphaResolvedAssetCleanup.js";
-import { buildAccountancySnapshot, formatAccountancyDigestLines } from "./accountancyLedgers.js";
 import { buildCapitalLedger, mergeCapitalLedgerIntoState, printCapitalLedgerReport, ALPHA_REWARD_HISTORY_SENDER } from "./capitalLedger.js";
 import { formatMicroUsdc, scanWalletUsdcTransfers } from "./indexerTransfers.js";
-import { closeDatabase } from "../db.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 dotenv.config();
@@ -60,7 +66,7 @@ async function runRewardHistoryCommand(receiverArg: string | undefined, senderAr
     }
   }
 
-  console.log("NUCKELAVEE ALPHA REWARD HISTORY");
+  console.log("GHILLIE ALPHA REWARD HISTORY");
   console.log("");
   console.log(`Receiver: ${receiver}`);
   console.log(`Reward sender filter: ${sender}`);
@@ -82,7 +88,8 @@ async function runCapitalReportCommand(): Promise<void> {
 
   const client = new AlphaSdkClient(config, false);
   const state = await loadAlphaState(config.stateKey, config.paperStartingBalanceUsd);
-  const markets = await client.getLiveMarkets();
+  const scan = await loadAlphaScan(config);
+  const markets = [...new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market])).values()];
   const marketAppIds = markets.map((market) => market.marketAppId);
 
   let walletUsdc: number | undefined;
@@ -192,7 +199,7 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
     throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for cancel-order");
   }
   if (parsed.execute && !config.walletMnemonic) {
-    throw new Error("ALPHA_WALLET_MNEMONIC or PAYER_MNEMONIC is required to --execute a cancel");
+    throw new Error("ALPHA_WALLET_MNEMONIC is required to --execute a cancel");
   }
 
   const client = new AlphaSdkClient(config, parsed.execute);
@@ -211,7 +218,7 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
     return true;
   });
 
-  console.log("NUCKELAVEE ALPHA CANCEL ORDER");
+  console.log("GHILLIE ALPHA CANCEL ORDER");
   console.log("");
   console.log(`Wallet: ${walletAddress}`);
   console.log(`Filter: marketAppId=${marketAppId ?? "any"} escrowAppId=${parsed.escrowAppId ?? "any"}`);
@@ -294,40 +301,16 @@ function formatError(error: unknown): string {
   return lines.join("\n");
 }
 
-function shouldKeepDatabaseOpen(command: string | undefined): boolean {
-  return command === "watch" || command === "paper-watch";
-}
-
-function installShutdownHandlers(command: string | undefined): void {
-  if (shouldKeepDatabaseOpen(command)) return;
-  let shuttingDown = false;
-  const shutdown = async (signal: NodeJS.Signals) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logStartupDebug(`received ${signal}; closing database`);
-    try {
-      await closeDatabase();
-    } catch (error) {
-      console.error(formatError(error));
-      process.exitCode = 1;
-    } finally {
-      process.kill(process.pid, signal);
-    }
-  };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-}
-
 async function buildScan(liveSigner = false) {
   const startedAt = Date.now();
   logStartupDebug(`buildScan start liveSigner=${liveSigner}`);
   const config = readAlphaConfig();
   logStartupDebug(
-    `buildScan config loaded matcherAppId=${config.matcherAppId} usdcAssetId=${config.usdcAssetId} wallet=${config.walletAddress ?? "none"}`,
+    `buildScan config loaded matcherAppId=${config.matcherAppId} usdcAssetId=${config.usdcAssetId} wallet=${config.walletAddress ?? "none"} amarokMcp=${config.amarokMcpUrl}`,
   );
   const client = new AlphaSdkClient(config, liveSigner);
-  logStartupDebug(`buildScan client created liveSigner=${liveSigner}`);
-  const scan = await loadAlphaScan(client, config);
+  logStartupDebug(`buildScan venue client created liveSigner=${liveSigner}`);
+  const scan = await loadAlphaScan(config);
   logStartupDebug(
     `buildScan scan loaded markets=${scan.markets.length} rewardMarkets=${scan.rewardMarkets.length} orderbooks=${scan.orderbooks.size} rewardError=${scan.rewardError ?? "none"}`,
   );
@@ -342,14 +325,6 @@ async function buildScan(liveSigner = false) {
   return { config, client, scan, rewardCandidates, parity };
 }
 
-function rewardContextFromScan(scan: AlphaScanResult, walletAddress?: string): RewardRateContext {
-  return {
-    markets: [...scan.rewardMarkets, ...scan.markets],
-    orderbooks: scan.orderbooks,
-    walletAddress,
-  };
-}
-
 async function runScanCommand(): Promise<void> {
   const { config, scan, rewardCandidates, parity } = await buildScan(false);
   printScan(scan, rewardCandidates, parity, config);
@@ -362,11 +337,9 @@ async function runRewardsCommand(): Promise<void> {
 
 async function runMarketCommand(arg: string | undefined): Promise<void> {
   if (!arg) throw new Error("Usage: npm run alpha:market -- <slug-or-id>");
-  const { client } = await buildScan(false);
-  const market = await client.getMarket(arg);
-  if (!market) throw new Error(`Alpha market not found: ${arg}`);
-  const book = await client.getOrderbook(market);
-  printMarketDetail(market, book);
+  const config = readAlphaConfig();
+  const { market, orderbook } = await loadAmarokMarket(config, arg);
+  printMarketDetail(market, orderbook);
 }
 
 async function runPaperCommand(): Promise<void> {
@@ -397,128 +370,6 @@ async function runPaperReportCommand(): Promise<void> {
   printPaperReport(state);
 }
 
-function isLowBalanceWarning(message: string): boolean {
-  return (
-    message.includes("below safety floor") ||
-    message.includes("below parity cost") ||
-    message.includes("below split amount") ||
-    message.includes("No live placements; wallet ALGO")
-  );
-}
-
-function summarizeTickActions(actions: LiveAction[]): {
-  placed: string[];
-  cancelled: string[];
-  inferredEntryFills: string[];
-  inferredExitFills: string[];
-  parityEvents: string[];
-  recycleEvents: string[];
-  warnings: string[];
-} {
-  const summary = {
-    placed: [] as string[],
-    cancelled: [] as string[],
-    inferredEntryFills: [] as string[],
-    inferredExitFills: [] as string[],
-    parityEvents: [] as string[],
-    recycleEvents: [] as string[],
-    warnings: [] as string[],
-  };
-
-  for (const action of actions) {
-    if (action.kind === "place") {
-      summary.placed.push(action.message);
-      continue;
-    }
-    if (action.kind === "cancel") {
-      summary.cancelled.push(action.message);
-      continue;
-    }
-    if (action.kind === "merge" || action.kind === "claim") {
-      summary.recycleEvents.push(action.message);
-      continue;
-    }
-    if (action.message.startsWith("Live entry fill") || action.message.startsWith("Inferred live entry fill") || action.message.startsWith("Inferred live fill")) {
-      summary.inferredEntryFills.push(action.message);
-      continue;
-    }
-    if (action.message.startsWith("Live exit fill") || action.message.startsWith("Inferred live exit fill")) {
-      summary.inferredExitFills.push(action.message);
-      continue;
-    }
-    if (action.kind === "parity" || action.message.startsWith("Parity failed")) {
-      summary.parityEvents.push(action.message);
-      continue;
-    }
-    if (isLowBalanceWarning(action.message)) {
-      summary.warnings.push(action.message);
-    }
-  }
-  return summary;
-}
-
-function compactLines(lines: string[], maxItems = 2): string {
-  if (lines.length === 0) return "none";
-  const shown = lines.slice(0, maxItems).join(" | ");
-  return lines.length > maxItems ? `${shown} | +${lines.length - maxItems} more` : shown;
-}
-
-function buildTickDigestMessage(result: {
-  actions: LiveAction[];
-  state: AlphaBotState;
-  walletUsdcBalanceUsd?: number;
-  walletAlgoBalance?: number;
-  config: ReturnType<typeof readAlphaConfig>;
-  scan: AlphaScanResult;
-}): string {
-  const actionSummary = summarizeTickActions(result.actions);
-  const exposure = summarizeLiveExposure(result.state, result.config, rewardContextFromScan(result.scan, result.config.walletAddress));
-  const positionsValueUsd = Object.values(result.state.positionsByMarket).reduce((sum, position) => {
-    const yesMark = position.lastMark ?? position.avgYesCost;
-    const noMark = position.lastMark ?? position.avgNoCost;
-    return sum + position.yesShares * yesMark + position.noShares * noMark;
-  }, 0);
-  const accountancyLines = formatAccountancyDigestLines(
-    buildAccountancySnapshot({
-      state: result.state,
-      walletUsdc: result.walletUsdcBalanceUsd,
-      bidEscrowUsd: exposure.bidExposureUsd,
-      positionsValueUsd,
-    }),
-    formatUsd,
-    formatRewardUsd,
-  );
-  const tickAt = new Date().toISOString();
-
-  return [
-    `Tick digest ${tickAt}`,
-    `tick: placed=${actionSummary.placed.length} cancelled=${actionSummary.cancelled.length} entry_fills=${actionSummary.inferredEntryFills.length} exit_fills=${actionSummary.inferredExitFills.length}`,
-    `wallet: ${formatUsd(result.walletUsdcBalanceUsd)} USDC | ${
-      result.walletAlgoBalance === undefined ? "unknown" : result.walletAlgoBalance.toFixed(6)
-    } ALGO`,
-    `orders: ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) | positions: ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
-    `bid_exposure=${formatUsd(exposure.bidExposureUsd)} (reward ${formatUsd(exposure.rewardBidExposureUsd)}, eligible ${formatUsd(
-      exposure.rewardEligibleBidExposureUsd,
-    )}, spread ${formatUsd(exposure.spreadBidExposureUsd)})`,
-    `exit_notional=${formatUsd(exposure.exitNotionalUsd)} (controlled ${formatUsd(exposure.controlledExitNotionalUsd)}, eligible ${formatUsd(
-      exposure.rewardEligibleExitNotionalUsd,
-    )})`,
-    `underwater_inventory=${formatUsd(exposure.underwaterInventoryNotionalUsd)} (loss ${formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)})`,
-    ...accountancyLines,
-    `exit_if_filled=${formatUsd(exposure.exitPnlIfFilledUsd)}`,
-    `reward_rates: eligible_liquidity=${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord) active=${formatRewardUsd(
-      exposure.activeRewardRateDailyUsd,
-    )}/day potential=${formatRewardUsd(exposure.potentialRewardRateDailyUsd)}/day share=${formatPercent(
-      exposure.activeRewardLiquidityShare,
-    )}/${formatPercent(exposure.potentialRewardLiquidityShare)}`,
-    `spread_pnl=${formatUsd(result.state.strategyStats.spreadRealisedPnl)} parity_pnl=${formatUsd(result.state.strategyStats.parityGrossPnl)}`,
-    `placed_orders=${compactLines(actionSummary.placed)}`,
-    `closed_or_cancelled=${compactLines([...actionSummary.cancelled, ...actionSummary.inferredExitFills])}`,
-    `recycled=${compactLines(actionSummary.recycleEvents)}`,
-    `warnings=${compactLines(actionSummary.warnings, 1)}`,
-  ].join("\n");
-}
-
 function extractTickAbortMessages(actions: LiveAction[]): string[] {
   return actions
     .filter((action) => action.message.startsWith("Tick aborted safely:"))
@@ -538,17 +389,6 @@ function formatUsd(value: number | undefined): string {
   return `$${value.toFixed(2)}`;
 }
 
-function formatRewardUsd(value: number | undefined): string {
-  if (value === undefined) return "unknown";
-  const decimals = Math.abs(value) < 0.01 ? 6 : 2;
-  return `$${value.toFixed(decimals)}`;
-}
-
-function formatPercent(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return "unknown";
-  return `${(value * 100).toFixed(2)}%`;
-}
-
 function shouldSendDailySummary(state: AlphaBotState): boolean {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
@@ -556,55 +396,6 @@ function shouldSendDailySummary(state: AlphaBotState): boolean {
   const targetHour = readDailySummaryHourUtc();
   if (targetHour === undefined) return true;
   return now.getUTCHours() === targetHour;
-}
-
-function buildDailySummaryMessage(
-  state: AlphaBotState,
-  walletUsdcBalanceUsd?: number,
-  walletAlgoBalance?: number,
-  config?: ReturnType<typeof readAlphaConfig>,
-  scan?: AlphaScanResult,
-): string {
-  const exposure = summarizeLiveExposure(state, config, scan && config ? rewardContextFromScan(scan, config.walletAddress) : {});
-  const positionsValueUsd = Object.values(state.positionsByMarket).reduce((sum, position) => {
-    const yesMark = position.lastMark ?? position.avgYesCost;
-    const noMark = position.lastMark ?? position.avgNoCost;
-    return sum + position.yesShares * yesMark + position.noShares * noMark;
-  }, 0);
-  const accountancyLines = formatAccountancyDigestLines(
-    buildAccountancySnapshot({
-      state,
-      walletUsdc: walletUsdcBalanceUsd,
-      bidEscrowUsd: exposure.bidExposureUsd,
-      positionsValueUsd,
-    }),
-    formatUsd,
-    formatRewardUsd,
-  );
-  const date = new Date().toISOString().slice(0, 10);
-  return [
-    `Daily summary ${date}`,
-    `wallet: ${formatUsd(walletUsdcBalanceUsd)} USDC | ${
-      walletAlgoBalance === undefined ? "unknown" : walletAlgoBalance.toFixed(6)
-    } ALGO`,
-    `orders: ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) | positions: ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
-    `bid_exposure=${formatUsd(exposure.bidExposureUsd)} (reward ${formatUsd(exposure.rewardBidExposureUsd)}, eligible ${formatUsd(
-      exposure.rewardEligibleBidExposureUsd,
-    )}, spread ${formatUsd(exposure.spreadBidExposureUsd)})`,
-    `exit_notional=${formatUsd(exposure.exitNotionalUsd)} (controlled ${formatUsd(exposure.controlledExitNotionalUsd)}, eligible ${formatUsd(
-      exposure.rewardEligibleExitNotionalUsd,
-    )})`,
-    `underwater_inventory=${formatUsd(exposure.underwaterInventoryNotionalUsd)} (loss ${formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)})`,
-    ...accountancyLines,
-    `exit_if_filled=${formatUsd(exposure.exitPnlIfFilledUsd)} realised_plus_open_exit=${formatUsd(exposure.realisedPlusOpenExitPnlUsd)}`,
-    `reward_rates: eligible_liquidity=${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord) active=${formatRewardUsd(
-      exposure.activeRewardRateDailyUsd,
-    )}/day potential=${formatRewardUsd(exposure.potentialRewardRateDailyUsd)}/day share=${formatPercent(
-      exposure.activeRewardLiquidityShare,
-    )}/${formatPercent(exposure.potentialRewardLiquidityShare)}`,
-    `spread_pnl=${formatUsd(state.strategyStats.spreadRealisedPnl)} parity_pnl=${formatUsd(state.strategyStats.parityGrossPnl)}`,
-    `lifetime: placed=${state.strategyStats.liveOrdersPlaced} cancelled=${state.strategyStats.liveOrdersCancelled}`,
-  ].join("\n");
 }
 
 async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
@@ -622,26 +413,39 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
     const summary = abortMessages.slice(0, 2).join(" | ");
     await notifyTelegramThrottled(
       "alpha-live-tick-aborted",
-      `ALERT: Nuckelavee live tick aborted safely\nreasons=${summary}\nwallet_usdc=${formatUsd(result.walletUsdcBalanceUsd)}\nwallet_algo=${
+      `ALERT: Ghillie live tick aborted safely\nreasons=${summary}\nwallet_usdc=${formatUsd(result.walletUsdcBalanceUsd)}\nwallet_algo=${
         result.walletAlgoBalance === undefined ? "unknown" : result.walletAlgoBalance.toFixed(6)
       }`,
       { throttleMinutes },
     );
   }
+  const reportBase = {
+    state: result.state,
+    walletUsdcBalanceUsd: result.walletUsdcBalanceUsd,
+    walletAlgoBalance: result.walletAlgoBalance,
+    config,
+    rewardContext: rewardContextFromScan(scan, config.walletAddress),
+    spend: {
+      payments: scan.payments,
+    },
+  };
   if (mode === "live") {
-    const digest = buildTickDigestMessage({ ...result, config, scan });
-    await notifyTelegram(digest);
+    const digest = formatTickDigestReport({
+      ...reportBase,
+      actions: result.actions,
+    });
+    await notifyTelegramReport(digest);
   }
   if (mode === "live" && shouldSendDailySummary(result.state)) {
-    const dailySummary = buildDailySummaryMessage(result.state, result.walletUsdcBalanceUsd, result.walletAlgoBalance, config, scan);
-    const sent = await notifyTelegram(dailySummary);
+    const dailySummary = formatDailySummaryReport(reportBase);
+    const sent = await notifyTelegramReport(dailySummary);
     if (sent) {
       result.state.notificationState ??= {};
       result.state.notificationState.lastDailySummaryDate = new Date().toISOString().slice(0, 10);
       await saveAlphaState(config.stateKey, result.state);
     }
   }
-  console.log(mode === "live" ? "NUCKELAVEE ALPHA LIVE" : "NUCKELAVEE ALPHA LIVE DRY RUN");
+  console.log(mode === "live" ? "GHILLIE ALPHA LIVE" : "GHILLIE ALPHA LIVE DRY RUN");
   console.log("");
   for (const action of result.actions) {
     console.log(`[${action.kind.toUpperCase()}] ${action.message}`);
@@ -702,7 +506,6 @@ function printUsage(): void {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  installShutdownHandlers(command);
   logStartupDebug(
     `main start command=${command ?? "none"} pid=${process.pid} cwd=${process.cwd()} node=${process.version} args=${process.argv.slice(2).join(" ")}`,
   );
@@ -728,9 +531,6 @@ void main().catch((error) => {
   logStartupDebug(`main failed message=${message}`);
   console.error(message);
   process.exitCode = 1;
-}).finally(async () => {
+}).finally(() => {
   logStartupDebug(`main finally command=${process.argv[2] ?? "none"} exitCode=${process.exitCode ?? 0}`);
-  if (!shouldKeepDatabaseOpen(process.argv[2])) {
-    await closeDatabase();
-  }
 });

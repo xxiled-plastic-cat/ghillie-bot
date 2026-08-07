@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/xxiled-plastic-cat/ghillie-bot/security/advisories/new
+    about: Report wallet, key, payment, or other security issues privately — do not open a public issue.
+  - name: Security policy
+    url: https://github.com/xxiled-plastic-cat/ghillie-bot/blob/main/SECURITY.md
+    about: How we handle security reports.

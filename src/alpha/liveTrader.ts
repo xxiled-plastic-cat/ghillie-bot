@@ -15,8 +15,9 @@ import { buildCapitalLedger, mergeCapitalLedgerIntoState } from "./capitalLedger
 import {
   applyLiveFillEvents,
   buildPlaceTimeFillEvent,
-  detectClosedCancels,
+  classifyClosedOrdersAgainstInventory,
   detectFillDeltasFromWallet,
+  inventorySideKey,
 } from "./liveFillLedger.js";
 import {
   buildInventorySnapshot,
@@ -28,7 +29,10 @@ import {
   INVENTORY_SHARE_EPSILON,
 } from "./inventoryView.js";
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
+import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
+import { parseExecutionQuotePayload, signAndSubmitUnsignedGroup } from "../integrations/algorand/submitUnsigned.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
+import { runPlanReview } from "./planReview/index.js";
 
 const CONTROLLED_UNDERWATER_EXIT_REASON = "controlled underwater exit";
 
@@ -664,19 +668,30 @@ async function refreshActualRewardsReceived(input: {
 }
 
 /**
- * Account for unaccounted shares only when the market is resolved with a known
- * YES/NO outcome (auto-pay / burn). Unresolved gaps never invent PnL. Voided /
- * unknown resolutions may prune share counts without mark write-off PnL.
+ * Account for unaccounted shares when:
+ * - market is resolved with a known YES/NO outcome (auto-pay / burn), or
+ * - shares stayed absent from wallet+escrow for the prune window (filled /
+ *   settled outside the fill ledger). Sustained absence never invents a mark
+ *   write-off; voided / unknown resolutions may prune without PnL too.
  */
 export function realiseStaleSide(
   position: AlphaPaperPosition,
   outcome: AlphaOutcome,
   shares: number,
   resolution: { isResolved?: boolean; outcome?: number },
+  options?: { sustainedAbsence?: boolean },
 ): { realised: number; note: string; allowMutate: boolean; realisePnl: boolean } {
   const avgCost = outcome === "YES" ? position.avgYesCost ?? 0 : position.avgNoCost ?? 0;
   const cost = shares * avgCost;
   if (resolution.isResolved !== true) {
+    if (options?.sustainedAbsence) {
+      return {
+        realised: 0,
+        note: "sustained absence from wallet+escrow; pruning ghost inventory without mark write-off (likely filled outside fill ledger)",
+        allowMutate: true,
+        realisePnl: false,
+      };
+    }
     return {
       realised: 0,
       note: "not resolved on-chain; deferring PnL and prune (API gap / transient read)",
@@ -712,8 +727,9 @@ function describeResolutionOutcome(outcome: number | undefined): string {
 /**
  * Reconcile each bot-state position against the wallet's actual free ASA
  * balance plus shares escrowed in open SELL orders. Persistently unaccounted
- * sides only mutate realised PnL when the market is resolved with a known
- * YES/NO outcome. Unresolved gaps warn only and never invent mark write-offs.
+ * sides mutate when the market is resolved, or after the prune window when
+ * free+escrow stay at zero (ghost inventory). Mark write-offs are never
+ * invented for unresolved gaps.
  */
 async function reconcilePositions(input: {
   liveClient: AlphaSdkClient;
@@ -805,7 +821,10 @@ async function reconcilePositions(input: {
     for (const outcome of ["YES", "NO"] as const) {
       const unaccounted = sideState[outcome].unaccounted;
       if (unaccounted <= SHARE_EPSILON) continue;
-      const { realised, note, allowMutate, realisePnl } = realiseStaleSide(position, outcome, unaccounted, resolution);
+      const sustainedAbsence = resolution.isResolved !== true;
+      const { realised, note, allowMutate, realisePnl } = realiseStaleSide(position, outcome, unaccounted, resolution, {
+        sustainedAbsence,
+      });
       const accounted = sideState[outcome].free + sideState[outcome].escrow;
       if (!allowMutate) {
         actions.push({
@@ -911,7 +930,7 @@ async function loadWalletOpenOrders(
     return await liveClient.getWalletOpenOrders(walletAddress);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-live] wallet order sync via API failed; falling back to per-market reads: ${message}`);
+    console.error(`[ghillie-live] wallet order sync via API failed; falling back to per-market reads: ${message}`);
     const results = await Promise.allSettled(
       [...marketByAppId.keys()].map((marketAppId) => liveClient.getOpenOrders(marketAppId, walletAddress)),
     );
@@ -919,7 +938,7 @@ async function loadWalletOpenOrders(
     if (failures.length > 0) {
       for (const failure of failures) {
         console.error(
-          `[alpha-live] per-market open order read failed: ${
+          `[ghillie-live] per-market open order read failed: ${
             failure.status === "rejected" ? (failure.reason instanceof Error ? failure.reason.message : String(failure.reason)) : "unknown"
           }`,
         );
@@ -952,14 +971,14 @@ async function finalLiveTickResult(
       walletUsdcBalanceUsd = await liveClient.getUsdcBalance(config.walletAddress);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[alpha-live] ${message}`);
+      console.error(`[ghillie-live] ${message}`);
       actions.push({ kind: "skip", message: `Wallet USDC refresh failed: ${message}` });
     }
     try {
       walletAlgoBalance = await liveClient.getAlgoBalance(config.walletAddress);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[alpha-live] ${message}`);
+      console.error(`[ghillie-live] ${message}`);
       actions.push({ kind: "skip", message: `Wallet ALGO refresh failed: ${message}` });
     }
     actions.push({ kind: "skip", message: "Refreshed wallet USDC/ALGO balances for live summary" });
@@ -1059,7 +1078,7 @@ export async function runLiveTick(
     walletOrders = await loadWalletOpenOrders(liveClient, config.walletAddress, marketByAppId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-live] tick aborted during wallet open order sync: ${message}`);
+    console.error(`[ghillie-live] tick aborted during wallet open order sync: ${message}`);
     actions.push({ kind: "skip", message: `Tick aborted safely: ${message}` });
     state.strategyStats.lastRunMode = mode;
     if (mode === "live") await saveAlphaState(config.stateKey, state);
@@ -1080,23 +1099,9 @@ export async function runLiveTick(
   for (const result of applyLiveFillEvents(state, fillEvents)) {
     if (result.applied) actions.push({ kind: "skip", message: result.message });
   }
-  const closedCancels = detectClosedCancels({
-    closedOrders,
-    cursor: state.liveFillCursorByEscrow,
-  });
-  if (closedCancels.length > 0) {
-    state.cancelledOrders.push(...closedCancels);
-    for (const cancelled of closedCancels) {
-      actions.push({
-        kind: "skip",
-        message: `Live cancel ${cancelled.title} ${cancelled.outcome} ${cancelled.side} escrowAppId=${cancelled.liveEscrowAppId}; unfilled ${cancelled.remainingShares.toFixed(6)} share(s)`,
-      });
-    }
-  }
-  logLiveMemory("after_fill_ledger", {
+  logLiveMemory("after_open_fill_ledger", {
     fillEvents: fillEvents.length,
     fills: state.fills.length,
-    cancelled: state.cancelledOrders.length,
     actions: actions.length,
   });
 
@@ -1106,23 +1111,82 @@ export async function runLiveTick(
     const positions = await liveClient.getPositions(config.walletAddress);
     rawWalletPositions = positions;
     positionsSynced = true;
-    const migrated = migratePositionsToAppIdKeys(state);
-    if (migrated > 0) {
-      actions.push({ kind: "skip", message: `Migrated ${migrated} position key(s) onto marketAppId` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[ghillie-live] position sync failed: ${message}`);
+    actions.push({ kind: "skip", message: `Position sync skipped: ${message}` });
+  }
+
+  if (closedOrders.length > 0 && positionsSynced) {
+    const stateSharesBySide = new Map<string, number>();
+    for (const position of Object.values(state.positionsByMarket)) {
+      if (position.marketAppId === undefined) continue;
+      stateSharesBySide.set(inventorySideKey(position.marketAppId, "YES"), position.yesShares);
+      stateSharesBySide.set(inventorySideKey(position.marketAppId, "NO"), position.noShares);
     }
     const inventorySnapshot = buildInventorySnapshot(rawWalletPositions, walletOrders);
-    const syncedPositions = syncPositionsFromInventory(state, inventorySnapshot, marketByAppId);
+    const chainSharesBySide = new Map<string, number>();
+    for (const [marketAppId, inventory] of inventorySnapshot) {
+      chainSharesBySide.set(inventorySideKey(marketAppId, "YES"), inventory.yes.total);
+      chainSharesBySide.set(inventorySideKey(marketAppId, "NO"), inventory.no.total);
+    }
+    const closed = classifyClosedOrdersAgainstInventory({
+      closedOrders,
+      cursor: state.liveFillCursorByEscrow,
+      stateSharesBySide,
+      chainSharesBySide,
+    });
+    for (const result of applyLiveFillEvents(state, closed.fills)) {
+      if (result.applied) {
+        actions.push({
+          kind: "skip",
+          message: result.message.replace(/^Live /, "Inferred live "),
+        });
+      }
+    }
+    if (closed.cancels.length > 0) {
+      state.cancelledOrders.push(...closed.cancels);
+      for (const cancelled of closed.cancels) {
+        actions.push({
+          kind: "skip",
+          message: `Live cancel ${cancelled.title} ${cancelled.outcome} ${cancelled.side} escrowAppId=${cancelled.liveEscrowAppId}; unfilled ${cancelled.remainingShares.toFixed(6)} share(s)`,
+        });
+      }
+    }
+  } else if (closedOrders.length > 0 && !positionsSynced) {
     actions.push({
       kind: "skip",
-      message: `Synced ${syncedPositions} live position(s) from wallet free+escrow inventory`,
+      message: `Deferred classify of ${closedOrders.length} closed live order(s): wallet positions unavailable`,
     });
-    for (const mismatch of inventoryInvariantMismatches(state, inventorySnapshot)) {
-      actions.push({ kind: "skip", message: mismatch.message });
+  }
+  logLiveMemory("after_fill_ledger", {
+    fillEvents: fillEvents.length,
+    fills: state.fills.length,
+    cancelled: state.cancelledOrders.length,
+    actions: actions.length,
+  });
+
+  try {
+    if (positionsSynced) {
+      const migrated = migratePositionsToAppIdKeys(state);
+      if (migrated > 0) {
+        actions.push({ kind: "skip", message: `Migrated ${migrated} position key(s) onto marketAppId` });
+      }
+      const inventorySnapshot = buildInventorySnapshot(rawWalletPositions, walletOrders);
+      const syncedPositions = syncPositionsFromInventory(state, inventorySnapshot, marketByAppId);
+      actions.push({
+        kind: "skip",
+        message: `Synced ${syncedPositions} live position(s) from wallet free+escrow inventory`,
+      });
+      for (const mismatch of inventoryInvariantMismatches(state, inventorySnapshot)) {
+        actions.push({ kind: "skip", message: mismatch.message });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-live] position sync failed: ${message}`);
+    console.error(`[ghillie-live] position sync failed: ${message}`);
     actions.push({ kind: "skip", message: `Position sync skipped: ${message}` });
+    positionsSynced = false;
   }
   logLiveMemory("after_wallet_positions", {
     positionsSynced,
@@ -1365,7 +1429,7 @@ export async function runLiveTick(
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[alpha-live] cancel failed escrowAppId=${escrowAppId}: ${message}`);
+      console.error(`[ghillie-live] cancel failed escrowAppId=${escrowAppId}: ${message}`);
       actions.push({ kind: "skip", message: `Cancel failed escrowAppId=${escrowAppId}: ${message}` });
     }
   }
@@ -1385,7 +1449,7 @@ export async function runLiveTick(
     ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[alpha-live] tick aborted during wallet balance sync: ${message}`);
+    console.error(`[ghillie-live] tick aborted during wallet balance sync: ${message}`);
     if (mode === "live") {
       actions.push({ kind: "skip", message: `Tick aborted safely: wallet balance sync failed: ${message}` });
       state.strategyStats.lastRunMode = mode;
@@ -1482,11 +1546,32 @@ export async function runLiveTick(
     pushQuote(exit);
   }
 
+  const review = await runPlanReview({
+    placementQueue,
+    state,
+    orderbooks: scan.orderbooks,
+    markets: marketByAppId,
+    config,
+    walletUsdc: walletUsdcBalanceUsd,
+    // Scan already resolved prefs (lane gate); reuse so we do not hit Spaces twice.
+    operatorPreferences: scan.operatorPreferences ?? "",
+  });
+  placementQueue.length = 0;
+  placementQueue.push(...review.placementQueue);
+  actions.push(...review.actions);
+  logLiveMemory("after_plan_review", {
+    reviewed: review.reviewed,
+    placementQueue: placementQueue.length,
+    actions: actions.length,
+  });
+
   const selectedRewardContractsByMarket = rewardContractsByMarket(state);
   const pendingRewardContractsByMarket = queuedRewardContractsByMarket(placementQueue);
 
   let remainingLiveBidUsdc = walletUsdcBalanceUsd;
   let reportedBidBudgetDepleted = false;
+  const amarokRuntime = mode === "live" ? createAmarokRuntime(config) : undefined;
+  try {
   for (const quote of placementQueue) {
     let quoteToPlace = quote;
     let pendingQuote = quote;
@@ -1580,12 +1665,29 @@ export async function runLiveTick(
     }
     removePendingQuote();
     try {
-      const result = await liveClient.createLimitOrder({
-        marketAppId: quoteToPlace.marketAppId,
-        outcome: quoteToPlace.outcome,
-        price: quoteToPlace.price,
-        sizeShares: quoteToPlace.sizeShares,
-        isBuying: quoteToPlace.side === "bid",
+      if (!amarokRuntime || !config.walletAddress) {
+        throw new Error("ALPHA_WALLET_MNEMONIC is required to place via Amarok");
+      }
+      const quoteResult = await amarokRuntime.client.getExecutionQuote(config.walletAddress, [
+        {
+          shapeKey: "alpha_place_limit_order",
+          input: {
+            marketAppId: quoteToPlace.marketAppId,
+            outcome: quoteToPlace.outcome,
+            side: quoteToPlace.side,
+            price: quoteToPlace.price,
+            sizeShares: quoteToPlace.sizeShares,
+          },
+        },
+      ]);
+      const parsed = parseExecutionQuotePayload(quoteResult.data);
+      const result = await signAndSubmitUnsignedGroup({
+        wallet: amarokRuntime.wallet,
+        algodServer: config.algodServer,
+        algodToken: config.algodToken,
+        unsignedTxnsBase64: parsed.unsignedTxnsBase64,
+        userSignIndexes: parsed.userSignIndexes,
+        knownEscrowAppId: parsed.escrowAppId,
       });
       const tracked = toTrackedLiveOrder(quoteToPlace, result);
       if (tracked.status === "open") {
@@ -1612,12 +1714,15 @@ export async function runLiveTick(
       await saveAlphaState(config.stateKey, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[alpha-live] place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}`);
+      console.error(`[ghillie-live] place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}`);
       if (quoteToPlace.side === "bid" && message.includes("underflow on subtracting")) {
         remainingLiveBidUsdc = 0;
       }
       actions.push({ kind: "skip", message: `Place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}` });
     }
+  }
+  } finally {
+    await amarokRuntime?.close();
   }
   logLiveMemory("after_placements", {
     openOrders: state.openOrders.length,

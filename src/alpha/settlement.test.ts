@@ -114,12 +114,21 @@ describe("applyClaimedFreeSharesToState", () => {
 });
 
 describe("realiseStaleSide", () => {
-  it("does not realise or mutate for unresolved gaps", () => {
+  it("does not realise or mutate for unresolved gaps before sustained absence", () => {
     const pos = position({ yesShares: 3, avgYesCost: 0.4, lastMark: 0.7 });
     const result = realiseStaleSide(pos, "YES", 3, { isResolved: false });
     assert.equal(result.allowMutate, false);
     assert.equal(result.realisePnl, false);
     assert.equal(result.realised, 0);
+  });
+
+  it("prunes sustained unresolved absence without mark write-off PnL", () => {
+    const pos = position({ yesShares: 3, avgYesCost: 0.4, lastMark: 0.7 });
+    const result = realiseStaleSide(pos, "YES", 3, { isResolved: false }, { sustainedAbsence: true });
+    assert.equal(result.allowMutate, true);
+    assert.equal(result.realisePnl, false);
+    assert.equal(result.realised, 0);
+    assert.match(result.note, /sustained absence/);
   });
 
   it("realises PnL for resolved YES/NO outcomes", () => {

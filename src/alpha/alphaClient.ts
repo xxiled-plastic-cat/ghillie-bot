@@ -265,13 +265,13 @@ function installAlphaApiDiagnostics(): void {
           bodyPreview = "<failed to read response body>";
         }
         console.error(
-          `[alpha-api] ${method} ${url} -> ${response.status} ${response.statusText} | body=${bodyPreview}`,
+          `[ghillie-api] ${method} ${url} -> ${response.status} ${response.statusText} | body=${bodyPreview}`,
         );
       }
       return response;
     } catch (error) {
       if (isAlphaApi) {
-        console.error(`[alpha-api] ${method} ${url} -> request failed: ${shortError(error)}`);
+        console.error(`[ghillie-api] ${method} ${url} -> request failed: ${shortError(error)}`);
       }
       throw error;
     }
@@ -291,13 +291,13 @@ export class AlphaSdkClient {
     this.algodClient = new algosdk.Algodv2(config.algodToken ?? "", config.algodServer, "");
     this.usdcAssetId = config.usdcAssetId;
     this.client = new AlphaClient({
+      apiKey: config.apiKey,
       algodClient: this.algodClient,
       indexerClient: new algosdk.Indexer(config.algodToken ?? "", config.indexerServer, ""),
       signer: algosdk.makeBasicAccountTransactionSigner(account),
       activeAddress: liveSigner && config.walletAddress ? config.walletAddress : account.addr.toString(),
       matcherAppId: config.matcherAppId,
       usdcAssetId: config.usdcAssetId,
-      apiKey: config.apiKey,
     });
   }
 
@@ -435,7 +435,7 @@ export class AlphaSdkClient {
     }
   }
 
-  async createLimitOrder(input: {
+  async createLimitOrder(_input: {
     marketAppId: number;
     outcome: "YES" | "NO";
     price: number;
@@ -448,18 +448,9 @@ export class AlphaSdkClient {
     matchedQuantity?: number;
     matchedPrice?: number;
   }> {
-    const result = await this.client.createLimitOrder({
-      marketAppId: input.marketAppId,
-      position: input.outcome === "YES" ? 1 : 0,
-      price: toMicroUnits(input.price),
-      quantity: toMicroUnits(input.sizeShares),
-      isBuying: input.isBuying,
-    });
-    return {
-      ...result,
-      matchedQuantity: fromMicroUnits(result.matchedQuantity),
-      matchedPrice: fromMicroUnits(result.matchedPrice),
-    };
+    throw new Error(
+      "createLimitOrder via Alpha SDK is disabled; place limit orders through Amarok MCP (amarok_get_execution_quote) + local sign/submit",
+    );
   }
 
   async createMarketOrder(input: {

@@ -1,11 +1,19 @@
-import { eq } from "drizzle-orm";
-
-import { botStates } from "../../drizzle/schema.js";
-import { getDatabase } from "../db.js";
+import { createBotStateStore, type BotStateStore } from "../integrations/storage/botStateStore.js";
 import { migratePositionsToAppIdKeys } from "./inventoryView.js";
 import type { AlphaBotState } from "./alphaTypes.js";
 
 const MAX_HISTORY = 500;
+
+let storeOverride: BotStateStore | undefined;
+
+/** Test hook — inject a store (e.g. local FS temp dir). */
+export function setAlphaStateStoreForTests(store: BotStateStore | undefined): void {
+  storeOverride = store;
+}
+
+function getStore(): BotStateStore {
+  return storeOverride ?? createBotStateStore();
+}
 
 export function emptyAlphaState(startingBalance: number): AlphaBotState {
   const now = new Date().toISOString();
@@ -71,10 +79,12 @@ function normalizeAlphaState(parsed: AlphaBotState, startingBalance: number): Al
 }
 
 export async function loadAlphaState(key: string, startingBalance: number): Promise<AlphaBotState> {
-  const db = getDatabase();
-  const [row] = await db.select().from(botStates).where(eq(botStates.key, key)).limit(1);
-  if (!row) return emptyAlphaState(startingBalance);
-  return normalizeAlphaState(row.state as AlphaBotState, startingBalance);
+  const raw = await getStore().getJson(key);
+  if (raw === undefined || raw === null) return emptyAlphaState(startingBalance);
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Alpha bot state at key ${JSON.stringify(key)} is not a JSON object`);
+  }
+  return normalizeAlphaState(raw as AlphaBotState, startingBalance);
 }
 
 export async function saveAlphaState(key: string, state: AlphaBotState): Promise<void> {
@@ -88,15 +98,5 @@ export async function saveAlphaState(key: string, state: AlphaBotState): Promise
     totalPnl: state.realisedPnl + state.unrealisedPnl,
     lastUpdated: new Date().toISOString(),
   };
-  const db = getDatabase();
-  await db
-    .insert(botStates)
-    .values({ key, state: bounded })
-    .onConflictDoUpdate({
-      target: botStates.key,
-      set: {
-        state: bounded,
-        updatedAt: new Date(),
-      },
-    });
+  await getStore().putJson(key, bounded);
 }

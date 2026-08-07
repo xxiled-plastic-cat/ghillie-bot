@@ -1,10 +1,21 @@
-import { eq } from "drizzle-orm";
-
-import { botStates } from "../../drizzle/schema.js";
-import { getDatabase } from "../db.js";
+import {
+  createBotStateStore,
+  type BotStateStore,
+} from "../integrations/storage/botStateStore.js";
 import type { PolyPaperLane, PolyPaperModelState, PolyPaperState } from "./polyPaperTypes.js";
 
 const MAX_HISTORY = 2_000;
+
+let storeOverride: BotStateStore | undefined;
+
+/** Test hook — inject a store (e.g. local FS temp dir). */
+export function setPolyPaperStateStoreForTests(store: BotStateStore | undefined): void {
+  storeOverride = store;
+}
+
+function getStore(): BotStateStore {
+  return storeOverride ?? createBotStateStore();
+}
 
 function emptyLaneRecord(): Record<PolyPaperLane, number> {
   return { reward: 0, spread: 0, parity: 0 };
@@ -80,10 +91,9 @@ function normalizePolyPaperState(parsed: PolyPaperState, startingBalance: number
 }
 
 export async function loadPolyPaperState(key: string, startingBalance: number): Promise<PolyPaperState> {
-  const db = getDatabase();
-  const [row] = await db.select().from(botStates).where(eq(botStates.key, key)).limit(1);
-  if (!row) return emptyPolyPaperState(startingBalance);
-  return normalizePolyPaperState(row.state as PolyPaperState, startingBalance);
+  const raw = await getStore().getJson(key);
+  if (!raw || typeof raw !== "object") return emptyPolyPaperState(startingBalance);
+  return normalizePolyPaperState(raw as PolyPaperState, startingBalance);
 }
 
 export async function savePolyPaperState(key: string, state: PolyPaperState): Promise<void> {
@@ -111,15 +121,5 @@ export async function savePolyPaperState(key: string, state: PolyPaperState): Pr
     },
     lastUpdated: new Date().toISOString(),
   };
-  const db = getDatabase();
-  await db
-    .insert(botStates)
-    .values({ key, state: bounded })
-    .onConflictDoUpdate({
-      target: botStates.key,
-      set: {
-        state: bounded,
-        updatedAt: new Date(),
-      },
-    });
+  await getStore().putJson(key, bounded);
 }
