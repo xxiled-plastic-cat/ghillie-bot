@@ -17,6 +17,10 @@ import {
 } from "./telegramNotifier.js";
 
 const MAX_ACTION_ROWS = 8;
+const TICK_START_PLAIN = "======== Ghillie tick ========";
+const TICK_END_PLAIN = "======== end tick ========";
+const TICK_START_RICH = "━━ Ghillie tick ━━";
+const TICK_END_RICH = "━━ end tick ━━";
 
 export type TelegramSpendInput = {
   payments?: Array<Pick<PaymentReceipt, "amountBaseUnits">>;
@@ -34,6 +38,7 @@ export type TickActionSummary = {
 };
 
 type ExposureSummary = ReturnType<typeof summarizeLiveExposure>;
+type TableRow = [string, string];
 
 export type GhillieReportBaseInput = {
   state: AlphaBotState;
@@ -67,6 +72,96 @@ function formatPercent(value: number | undefined): string {
 
 function formatAlgo(value: number | undefined): string {
   return value === undefined ? "unknown" : value.toFixed(6);
+}
+
+function padCell(value: string, width: number, align: "left" | "right" = "left"): string {
+  if (value.length >= width) return value;
+  const padding = " ".repeat(width - value.length);
+  return align === "right" ? `${padding}${value}` : `${value}${padding}`;
+}
+
+function formatAlignedTable(headers: [string, string], rows: TableRow[]): string {
+  const width0 = Math.max(headers[0].length, ...rows.map((row) => row[0].length));
+  const width1 = Math.max(headers[1].length, ...rows.map((row) => row[1].length));
+  const lines = [
+    `${padCell(headers[0], width0)}  ${padCell(headers[1], width1, "right")}`,
+    `${"-".repeat(width0)}  ${"-".repeat(width1)}`,
+    ...rows.map((row) => `${padCell(row[0], width0)}  ${padCell(row[1], width1, "right")}`),
+  ];
+  return lines.join("\n");
+}
+
+function formatRichMarkdownTable(headers: [string, string], rows: TableRow[]): string[] {
+  return [
+    `| ${headers[0]} | ${headers[1]} |`,
+    "| --- | ---: |",
+    ...rows.map((row) => `| ${escapeRichMarkdown(row[0])} | ${escapeRichMarkdown(row[1])} |`),
+  ];
+}
+
+function formatHtmlPreTable(headers: [string, string], rows: TableRow[]): string {
+  return `<pre>${escapeHtml(formatAlignedTable(headers, rows))}</pre>`;
+}
+
+function actionCountRows(summary: TickActionSummary): TableRow[] {
+  return [
+    ["Placed", String(summary.placed.length)],
+    ["Cancelled", String(summary.cancelled.length)],
+    ["Entry fills", String(summary.inferredEntryFills.length)],
+    ["Exit fills", String(summary.inferredExitFills.length)],
+  ];
+}
+
+function bidExposureRows(exposure: ExposureSummary): TableRow[] {
+  return [
+    ["Total bid", formatUsd(exposure.bidExposureUsd)],
+    ["Reward", formatUsd(exposure.rewardBidExposureUsd)],
+    ["Eligible", formatUsd(exposure.rewardEligibleBidExposureUsd)],
+    ["Spread", formatUsd(exposure.spreadBidExposureUsd)],
+  ];
+}
+
+function exitExposureRows(exposure: ExposureSummary, includeRealisedPlusOpen: boolean): TableRow[] {
+  const rows: TableRow[] = [
+    ["Exit notional", formatUsd(exposure.exitNotionalUsd)],
+    ["Controlled", formatUsd(exposure.controlledExitNotionalUsd)],
+    ["Eligible exit", formatUsd(exposure.rewardEligibleExitNotionalUsd)],
+    ["Underwater", formatUsd(exposure.underwaterInventoryNotionalUsd)],
+    ["UW loss", formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)],
+    ["Exit if filled", formatUsd(exposure.exitPnlIfFilledUsd)],
+  ];
+  if (includeRealisedPlusOpen) {
+    rows.push(["Realised+open exit", formatUsd(exposure.realisedPlusOpenExitPnlUsd)]);
+  }
+  return rows;
+}
+
+function rewardRateRows(exposure: ExposureSummary): TableRow[] {
+  return [
+    ["Eligible liq", `${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord)`],
+    ["Active /day", formatRewardUsd(exposure.activeRewardRateDailyUsd)],
+    ["Potential /day", formatRewardUsd(exposure.potentialRewardRateDailyUsd)],
+    [
+      "Share act/pot",
+      `${formatPercent(exposure.activeRewardLiquidityShare)} / ${formatPercent(exposure.potentialRewardLiquidityShare)}`,
+    ],
+  ];
+}
+
+function accountancyRows(snapshot: AccountancySnapshot, state: AlphaBotState): TableRow[] {
+  return [
+    ["Trading realised", formatUsd(snapshot.trading.realisedPnlUsd)],
+    ["Trading unrealised", formatUsd(snapshot.trading.unrealisedPnlUsd)],
+    ["Trading total", formatUsd(snapshot.trading.tradingPnlUsd)],
+    ["Rewards received", formatRewardUsd(snapshot.rewards.receivedUsd)],
+    ["Rewards accrual", formatRewardUsd(snapshot.rewards.estimatedAccrualUsd)],
+    ["Cash wallet", formatUsd(snapshot.cash.walletUsdc)],
+    ["Bid escrow", formatUsd(snapshot.cash.bidEscrowUsd)],
+    ["Cash total", formatUsd(snapshot.cash.cashUsdc)],
+    ["Total economic", formatUsd(snapshot.totalEconomicUsd)],
+    ["Spread PnL", formatUsd(state.strategyStats.spreadRealisedPnl)],
+    ["Parity PnL", formatUsd(state.strategyStats.parityGrossPnl)],
+  ];
 }
 
 function isLowBalanceWarning(message: string): boolean {
@@ -235,28 +330,6 @@ function snapshotLinesPlain(
   ];
 }
 
-function exposureLinesPlain(exposure: ExposureSummary, includeRealisedPlusOpen: boolean): string[] {
-  const lines = [
-    `Bid exposure: ${formatUsd(exposure.bidExposureUsd)} (reward ${formatUsd(exposure.rewardBidExposureUsd)}, eligible ${formatUsd(exposure.rewardEligibleBidExposureUsd)}, spread ${formatUsd(exposure.spreadBidExposureUsd)})`,
-    `Exit notional: ${formatUsd(exposure.exitNotionalUsd)} (controlled ${formatUsd(exposure.controlledExitNotionalUsd)}, eligible ${formatUsd(exposure.rewardEligibleExitNotionalUsd)})`,
-    `Underwater inventory: ${formatUsd(exposure.underwaterInventoryNotionalUsd)} (loss ${formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)})`,
-    includeRealisedPlusOpen
-      ? `Exit if filled: ${formatUsd(exposure.exitPnlIfFilledUsd)} | Realised+open exit: ${formatUsd(exposure.realisedPlusOpenExitPnlUsd)}`
-      : `Exit if filled: ${formatUsd(exposure.exitPnlIfFilledUsd)}`,
-    `Reward rates: eligible liquidity ${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord) | active ${formatRewardUsd(exposure.activeRewardRateDailyUsd)}/day | potential ${formatRewardUsd(exposure.potentialRewardRateDailyUsd)}/day | share ${formatPercent(exposure.activeRewardLiquidityShare)}/${formatPercent(exposure.potentialRewardLiquidityShare)}`,
-  ];
-  return lines;
-}
-
-function accountancyLinesPlain(snapshot: AccountancySnapshot): string[] {
-  return [
-    `Trading: realised ${formatUsd(snapshot.trading.realisedPnlUsd)} | unrealised ${formatUsd(snapshot.trading.unrealisedPnlUsd)} | total ${formatUsd(snapshot.trading.tradingPnlUsd)}`,
-    `Rewards: received ${formatRewardUsd(snapshot.rewards.receivedUsd)} | est accrual ${formatRewardUsd(snapshot.rewards.estimatedAccrualUsd)}`,
-    `Cash: wallet ${formatUsd(snapshot.cash.walletUsdc)} | bid escrow ${formatUsd(snapshot.cash.bidEscrowUsd)} | total ${formatUsd(snapshot.cash.cashUsdc)}`,
-    `Total economic (trading+rewards): ${formatUsd(snapshot.totalEconomicUsd)}`,
-  ];
-}
-
 function formatTickDigestPlain(input: TickDigestInput): string {
   const exposure = summarizeLiveExposure(input.state, input.config, input.rewardContext ?? {});
   const accountancy = buildAccountancy(input, exposure);
@@ -264,22 +337,50 @@ function formatTickDigestPlain(input: TickDigestInput): string {
   const spend = mergeSpend(input.spend, input.actions);
   const tickAt = input.at ?? new Date().toISOString();
   const spendLines = buildSpendPlainLines(spend);
+  const detailRows = actionRows(actionSummary);
 
   const lines = [
-    `Ghillie tick · ${tickAt}`,
-    `Tick: placed=${actionSummary.placed.length} cancelled=${actionSummary.cancelled.length} entry_fills=${actionSummary.inferredEntryFills.length} exit_fills=${actionSummary.inferredExitFills.length}`,
+    TICK_START_PLAIN,
+    tickAt,
+    "",
+    "Actions:",
+    formatAlignedTable(["Action", "Count"], actionCountRows(actionSummary)),
+    "",
     ...snapshotLinesPlain(input.walletUsdcBalanceUsd, input.walletAlgoBalance, exposure),
-    ...exposureLinesPlain(exposure, false),
-    ...accountancyLinesPlain(accountancy),
-    `Spread PnL: ${formatUsd(input.state.strategyStats.spreadRealisedPnl)} | Parity PnL: ${formatUsd(input.state.strategyStats.parityGrossPnl)}`,
-    `Placed: ${compactLines(actionSummary.placed)}`,
-    `Closed/cancelled: ${compactLines([...actionSummary.cancelled, ...actionSummary.inferredExitFills])}`,
-    `Recycled: ${compactLines(actionSummary.recycleEvents)}`,
-    `Warnings: ${compactLines(actionSummary.warnings, 1)}`,
+    "",
+    "Bids:",
+    formatAlignedTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "",
+    "Exit / inventory:",
+    formatAlignedTable(["Metric", "Value"], exitExposureRows(exposure, false)),
+    "",
+    "Rewards:",
+    formatAlignedTable(["Metric", "Value"], rewardRateRows(exposure)),
+    "",
+    "Accountancy:",
+    formatAlignedTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
   ];
-  if (spendLines.length > 0) {
-    lines.push("Spend:", ...spendLines.map((line) => `  ${line}`));
+
+  if (detailRows.length > 0) {
+    lines.push(
+      "",
+      "Action details:",
+      formatAlignedTable(
+        ["Kind", "Detail"],
+        detailRows.map((row) => [row.kind, truncate(row.detail, 80)]),
+      ),
+    );
   }
+
+  if (actionSummary.warnings.length > 0) {
+    lines.push("", `Warnings: ${compactLines(actionSummary.warnings, 1)}`);
+  }
+
+  if (spendLines.length > 0) {
+    lines.push("", "Spend:", ...spendLines.map((line) => `  ${line}`));
+  }
+
+  lines.push("", TICK_END_PLAIN);
   return truncatePlainReport(lines.join("\n"));
 }
 
@@ -293,13 +394,22 @@ function formatDailySummaryPlain(input: GhillieReportBaseInput): string {
   const lines = [
     `Ghillie daily · ${date}`,
     ...snapshotLinesPlain(input.walletUsdcBalanceUsd, input.walletAlgoBalance, exposure),
-    ...exposureLinesPlain(exposure, true),
-    ...accountancyLinesPlain(accountancy),
-    `Spread PnL: ${formatUsd(input.state.strategyStats.spreadRealisedPnl)} | Parity PnL: ${formatUsd(input.state.strategyStats.parityGrossPnl)}`,
+    "",
+    "Bids:",
+    formatAlignedTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "",
+    "Exit / inventory:",
+    formatAlignedTable(["Metric", "Value"], exitExposureRows(exposure, true)),
+    "",
+    "Rewards:",
+    formatAlignedTable(["Metric", "Value"], rewardRateRows(exposure)),
+    "",
+    "Accountancy:",
+    formatAlignedTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
     `Lifetime: placed=${input.state.strategyStats.liveOrdersPlaced} cancelled=${input.state.strategyStats.liveOrdersCancelled}`,
   ];
   if (spendLines.length > 0) {
-    lines.push("Spend:", ...spendLines.map((line) => `  ${line}`));
+    lines.push("", "Spend:", ...spendLines.map((line) => `  ${line}`));
   }
   return truncatePlainReport(lines.join("\n"));
 }
@@ -310,39 +420,46 @@ function formatTickDigestRich(input: TickDigestInput): string {
   const actionSummary = summarizeTickActions(input.actions);
   const spend = mergeSpend(input.spend, input.actions);
   const tickAt = input.at ?? new Date().toISOString();
-  const rows = actionRows(actionSummary);
+  const detailRows = actionRows(actionSummary);
   const spendLines = buildSpendRichLines(spend);
 
   const sections: string[] = [
-    `### Ghillie tick · ${tickAt}`,
-    `**Placed** ${actionSummary.placed.length} · **Cancelled** ${actionSummary.cancelled.length} · **Entry fills** ${actionSummary.inferredEntryFills.length} · **Exit fills** ${actionSummary.inferredExitFills.length}`,
+    `### ${TICK_START_RICH}`,
+    `\`${tickAt}\``,
+    "",
+    "### Actions",
+    "",
+    ...formatRichMarkdownTable(["Action", "Count"], actionCountRows(actionSummary)),
+    "",
     `**Wallet** ${formatUsd(input.walletUsdcBalanceUsd)} USDC · **ALGO** ${formatAlgo(input.walletAlgoBalance)}`,
     `**Orders** ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) · **Positions** ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
     "",
-    "### Exposure",
-    `Bid **${formatUsd(exposure.bidExposureUsd)}** · reward ${formatUsd(exposure.rewardBidExposureUsd)} · eligible ${formatUsd(exposure.rewardEligibleBidExposureUsd)} · spread ${formatUsd(exposure.spreadBidExposureUsd)}`,
-    `Exit notional **${formatUsd(exposure.exitNotionalUsd)}** · controlled ${formatUsd(exposure.controlledExitNotionalUsd)} · eligible ${formatUsd(exposure.rewardEligibleExitNotionalUsd)}`,
-    `Underwater **${formatUsd(exposure.underwaterInventoryNotionalUsd)}** · loss ${formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)}`,
-    `Exit if filled **${formatUsd(exposure.exitPnlIfFilledUsd)}**`,
-    `Rewards: eligible liquidity **${formatUsd(exposure.rewardEligibleLiquidityUsd)}** (${exposure.rewardEligibleOrders} ord) · active **${formatRewardUsd(exposure.activeRewardRateDailyUsd)}**/day · potential **${formatRewardUsd(exposure.potentialRewardRateDailyUsd)}**/day · share ${formatPercent(exposure.activeRewardLiquidityShare)}/${formatPercent(exposure.potentialRewardLiquidityShare)}`,
+    "### Bids",
+    "",
+    ...formatRichMarkdownTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "",
+    "### Exit / inventory",
+    "",
+    ...formatRichMarkdownTable(["Metric", "Value"], exitExposureRows(exposure, false)),
+    "",
+    "### Rewards",
+    "",
+    ...formatRichMarkdownTable(["Metric", "Value"], rewardRateRows(exposure)),
     "",
     "### Accountancy",
-    `Trading realised **${formatUsd(accountancy.trading.realisedPnlUsd)}** · unrealised **${formatUsd(accountancy.trading.unrealisedPnlUsd)}** · total **${formatUsd(accountancy.trading.tradingPnlUsd)}**`,
-    `Rewards received **${formatRewardUsd(accountancy.rewards.receivedUsd)}** · est accrual **${formatRewardUsd(accountancy.rewards.estimatedAccrualUsd)}**`,
-    `Cash wallet **${formatUsd(accountancy.cash.walletUsdc)}** · bid escrow **${formatUsd(accountancy.cash.bidEscrowUsd)}** · total **${formatUsd(accountancy.cash.cashUsdc)}**`,
-    `Total economic **${formatUsd(accountancy.totalEconomicUsd)}**`,
-    `Spread PnL **${formatUsd(input.state.strategyStats.spreadRealisedPnl)}** · Parity PnL **${formatUsd(input.state.strategyStats.parityGrossPnl)}**`,
+    "",
+    ...formatRichMarkdownTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
   ];
 
-  if (rows.length > 0) {
+  if (detailRows.length > 0) {
     sections.push(
       "",
-      "### Actions",
+      "### Action details",
       "",
       "| Kind | Detail |",
       "| --- | --- |",
     );
-    for (const row of rows) {
+    for (const row of detailRows) {
       sections.push(`| ${escapeRichMarkdown(row.kind)} | ${escapeRichMarkdown(truncate(row.detail, 120))} |`);
     }
     const total =
@@ -373,6 +490,7 @@ function formatTickDigestRich(input: TickDigestInput): string {
     sections.push("", "### Spend", "", ...spendLines);
   }
 
+  sections.push("", `### ${TICK_END_RICH}`);
   return truncateRichReport(sections.join("\n"));
 }
 
@@ -388,19 +506,22 @@ function formatDailySummaryRich(input: GhillieReportBaseInput): string {
     `**Wallet** ${formatUsd(input.walletUsdcBalanceUsd)} USDC · **ALGO** ${formatAlgo(input.walletAlgoBalance)}`,
     `**Orders** ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) · **Positions** ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
     "",
-    "### Exposure",
-    `Bid **${formatUsd(exposure.bidExposureUsd)}** · reward ${formatUsd(exposure.rewardBidExposureUsd)} · eligible ${formatUsd(exposure.rewardEligibleBidExposureUsd)} · spread ${formatUsd(exposure.spreadBidExposureUsd)}`,
-    `Exit notional **${formatUsd(exposure.exitNotionalUsd)}** · controlled ${formatUsd(exposure.controlledExitNotionalUsd)} · eligible ${formatUsd(exposure.rewardEligibleExitNotionalUsd)}`,
-    `Underwater **${formatUsd(exposure.underwaterInventoryNotionalUsd)}** · loss ${formatUsd(exposure.underwaterInventoryUnrealisedLossUsd)}`,
-    `Exit if filled **${formatUsd(exposure.exitPnlIfFilledUsd)}** · Realised+open exit **${formatUsd(exposure.realisedPlusOpenExitPnlUsd)}**`,
-    `Rewards: eligible liquidity **${formatUsd(exposure.rewardEligibleLiquidityUsd)}** (${exposure.rewardEligibleOrders} ord) · active **${formatRewardUsd(exposure.activeRewardRateDailyUsd)}**/day · potential **${formatRewardUsd(exposure.potentialRewardRateDailyUsd)}**/day · share ${formatPercent(exposure.activeRewardLiquidityShare)}/${formatPercent(exposure.potentialRewardLiquidityShare)}`,
+    "### Bids",
+    "",
+    ...formatRichMarkdownTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "",
+    "### Exit / inventory",
+    "",
+    ...formatRichMarkdownTable(["Metric", "Value"], exitExposureRows(exposure, true)),
+    "",
+    "### Rewards",
+    "",
+    ...formatRichMarkdownTable(["Metric", "Value"], rewardRateRows(exposure)),
     "",
     "### Accountancy",
-    `Trading realised **${formatUsd(accountancy.trading.realisedPnlUsd)}** · unrealised **${formatUsd(accountancy.trading.unrealisedPnlUsd)}** · total **${formatUsd(accountancy.trading.tradingPnlUsd)}**`,
-    `Rewards received **${formatRewardUsd(accountancy.rewards.receivedUsd)}** · est accrual **${formatRewardUsd(accountancy.rewards.estimatedAccrualUsd)}**`,
-    `Cash wallet **${formatUsd(accountancy.cash.walletUsdc)}** · bid escrow **${formatUsd(accountancy.cash.bidEscrowUsd)}** · total **${formatUsd(accountancy.cash.cashUsdc)}**`,
-    `Total economic **${formatUsd(accountancy.totalEconomicUsd)}**`,
-    `Spread PnL **${formatUsd(input.state.strategyStats.spreadRealisedPnl)}** · Parity PnL **${formatUsd(input.state.strategyStats.parityGrossPnl)}**`,
+    "",
+    ...formatRichMarkdownTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
+    "",
     `Lifetime placed **${input.state.strategyStats.liveOrdersPlaced}** · cancelled **${input.state.strategyStats.liveOrdersCancelled}**`,
   ];
 
@@ -417,35 +538,37 @@ function formatTickDigestHtml(input: TickDigestInput): string {
   const actionSummary = summarizeTickActions(input.actions);
   const spend = mergeSpend(input.spend, input.actions);
   const tickAt = input.at ?? new Date().toISOString();
-  const rows = actionRows(actionSummary);
+  const detailRows = actionRows(actionSummary);
   const spendLines = buildSpendHtmlLines(spend);
 
   const sections: string[] = [
-    `<b>Ghillie tick · ${escapeHtml(tickAt)}</b>`,
-    `<b>Placed</b> ${actionSummary.placed.length} · <b>Cancelled</b> ${actionSummary.cancelled.length} · <b>Entry fills</b> ${actionSummary.inferredEntryFills.length} · <b>Exit fills</b> ${actionSummary.inferredExitFills.length}`,
+    `<b>${escapeHtml(TICK_START_RICH)}</b>`,
+    `<code>${escapeHtml(tickAt)}</code>`,
+    "",
+    "<b>Actions</b>",
+    formatHtmlPreTable(["Action", "Count"], actionCountRows(actionSummary)),
     `<b>Wallet</b> ${escapeHtml(formatUsd(input.walletUsdcBalanceUsd))} USDC · <b>ALGO</b> ${escapeHtml(formatAlgo(input.walletAlgoBalance))}`,
     `<b>Orders</b> ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) · <b>Positions</b> ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
     "",
-    "<b>Exposure</b>",
-    `Bid <b>${escapeHtml(formatUsd(exposure.bidExposureUsd))}</b> · reward ${escapeHtml(formatUsd(exposure.rewardBidExposureUsd))} · eligible ${escapeHtml(formatUsd(exposure.rewardEligibleBidExposureUsd))} · spread ${escapeHtml(formatUsd(exposure.spreadBidExposureUsd))}`,
-    `Exit notional <b>${escapeHtml(formatUsd(exposure.exitNotionalUsd))}</b> · controlled ${escapeHtml(formatUsd(exposure.controlledExitNotionalUsd))} · eligible ${escapeHtml(formatUsd(exposure.rewardEligibleExitNotionalUsd))}`,
-    `Underwater <b>${escapeHtml(formatUsd(exposure.underwaterInventoryNotionalUsd))}</b> · loss ${escapeHtml(formatUsd(exposure.underwaterInventoryUnrealisedLossUsd))}`,
-    `Exit if filled <b>${escapeHtml(formatUsd(exposure.exitPnlIfFilledUsd))}</b>`,
-    `Rewards: eligible liquidity <b>${escapeHtml(formatUsd(exposure.rewardEligibleLiquidityUsd))}</b> (${exposure.rewardEligibleOrders} ord) · active <b>${escapeHtml(formatRewardUsd(exposure.activeRewardRateDailyUsd))}</b>/day · potential <b>${escapeHtml(formatRewardUsd(exposure.potentialRewardRateDailyUsd))}</b>/day`,
-    "",
+    "<b>Bids</b>",
+    formatHtmlPreTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "<b>Exit / inventory</b>",
+    formatHtmlPreTable(["Metric", "Value"], exitExposureRows(exposure, false)),
+    "<b>Rewards</b>",
+    formatHtmlPreTable(["Metric", "Value"], rewardRateRows(exposure)),
     "<b>Accountancy</b>",
-    `Trading realised <b>${escapeHtml(formatUsd(accountancy.trading.realisedPnlUsd))}</b> · unrealised <b>${escapeHtml(formatUsd(accountancy.trading.unrealisedPnlUsd))}</b> · total <b>${escapeHtml(formatUsd(accountancy.trading.tradingPnlUsd))}</b>`,
-    `Rewards received <b>${escapeHtml(formatRewardUsd(accountancy.rewards.receivedUsd))}</b> · est accrual <b>${escapeHtml(formatRewardUsd(accountancy.rewards.estimatedAccrualUsd))}</b>`,
-    `Cash wallet <b>${escapeHtml(formatUsd(accountancy.cash.walletUsdc))}</b> · bid escrow <b>${escapeHtml(formatUsd(accountancy.cash.bidEscrowUsd))}</b> · total <b>${escapeHtml(formatUsd(accountancy.cash.cashUsdc))}</b>`,
-    `Total economic <b>${escapeHtml(formatUsd(accountancy.totalEconomicUsd))}</b>`,
-    `Spread PnL <b>${escapeHtml(formatUsd(input.state.strategyStats.spreadRealisedPnl))}</b> · Parity PnL <b>${escapeHtml(formatUsd(input.state.strategyStats.parityGrossPnl))}</b>`,
+    formatHtmlPreTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
   ];
 
-  if (rows.length > 0) {
-    sections.push("", "<b>Actions</b>");
-    for (const row of rows) {
-      sections.push(`• <i>${escapeHtml(row.kind)}</i> — ${escapeHtml(truncate(row.detail, 120))}`);
-    }
+  if (detailRows.length > 0) {
+    sections.push(
+      "",
+      "<b>Action details</b>",
+      formatHtmlPreTable(
+        ["Kind", "Detail"],
+        detailRows.map((row) => [row.kind, truncate(row.detail, 80)]),
+      ),
+    );
   }
 
   if (actionSummary.warnings.length > 0) {
@@ -459,6 +582,7 @@ function formatTickDigestHtml(input: TickDigestInput): string {
     sections.push("", "<b>Spend</b>", ...spendLines);
   }
 
+  sections.push("", `<b>${escapeHtml(TICK_END_RICH)}</b>`);
   return truncateHtmlReport(sections.join("\n"));
 }
 
@@ -474,19 +598,14 @@ function formatDailySummaryHtml(input: GhillieReportBaseInput): string {
     `<b>Wallet</b> ${escapeHtml(formatUsd(input.walletUsdcBalanceUsd))} USDC · <b>ALGO</b> ${escapeHtml(formatAlgo(input.walletAlgoBalance))}`,
     `<b>Orders</b> ${exposure.openOrders} open (${exposure.bidOrders} bid, ${exposure.exitOrders} exit) · <b>Positions</b> ${exposure.openPositions} (${exposure.underwaterPositions} underwater)`,
     "",
-    "<b>Exposure</b>",
-    `Bid <b>${escapeHtml(formatUsd(exposure.bidExposureUsd))}</b> · reward ${escapeHtml(formatUsd(exposure.rewardBidExposureUsd))} · eligible ${escapeHtml(formatUsd(exposure.rewardEligibleBidExposureUsd))} · spread ${escapeHtml(formatUsd(exposure.spreadBidExposureUsd))}`,
-    `Exit notional <b>${escapeHtml(formatUsd(exposure.exitNotionalUsd))}</b> · controlled ${escapeHtml(formatUsd(exposure.controlledExitNotionalUsd))} · eligible ${escapeHtml(formatUsd(exposure.rewardEligibleExitNotionalUsd))}`,
-    `Underwater <b>${escapeHtml(formatUsd(exposure.underwaterInventoryNotionalUsd))}</b> · loss ${escapeHtml(formatUsd(exposure.underwaterInventoryUnrealisedLossUsd))}`,
-    `Exit if filled <b>${escapeHtml(formatUsd(exposure.exitPnlIfFilledUsd))}</b> · Realised+open exit <b>${escapeHtml(formatUsd(exposure.realisedPlusOpenExitPnlUsd))}</b>`,
-    `Rewards: eligible liquidity <b>${escapeHtml(formatUsd(exposure.rewardEligibleLiquidityUsd))}</b> (${exposure.rewardEligibleOrders} ord) · active <b>${escapeHtml(formatRewardUsd(exposure.activeRewardRateDailyUsd))}</b>/day · potential <b>${escapeHtml(formatRewardUsd(exposure.potentialRewardRateDailyUsd))}</b>/day`,
-    "",
+    "<b>Bids</b>",
+    formatHtmlPreTable(["Lane", "Bid"], bidExposureRows(exposure)),
+    "<b>Exit / inventory</b>",
+    formatHtmlPreTable(["Metric", "Value"], exitExposureRows(exposure, true)),
+    "<b>Rewards</b>",
+    formatHtmlPreTable(["Metric", "Value"], rewardRateRows(exposure)),
     "<b>Accountancy</b>",
-    `Trading realised <b>${escapeHtml(formatUsd(accountancy.trading.realisedPnlUsd))}</b> · unrealised <b>${escapeHtml(formatUsd(accountancy.trading.unrealisedPnlUsd))}</b> · total <b>${escapeHtml(formatUsd(accountancy.trading.tradingPnlUsd))}</b>`,
-    `Rewards received <b>${escapeHtml(formatRewardUsd(accountancy.rewards.receivedUsd))}</b> · est accrual <b>${escapeHtml(formatRewardUsd(accountancy.rewards.estimatedAccrualUsd))}</b>`,
-    `Cash wallet <b>${escapeHtml(formatUsd(accountancy.cash.walletUsdc))}</b> · bid escrow <b>${escapeHtml(formatUsd(accountancy.cash.bidEscrowUsd))}</b> · total <b>${escapeHtml(formatUsd(accountancy.cash.cashUsdc))}</b>`,
-    `Total economic <b>${escapeHtml(formatUsd(accountancy.totalEconomicUsd))}</b>`,
-    `Spread PnL <b>${escapeHtml(formatUsd(input.state.strategyStats.spreadRealisedPnl))}</b> · Parity PnL <b>${escapeHtml(formatUsd(input.state.strategyStats.parityGrossPnl))}</b>`,
+    formatHtmlPreTable(["Ledger", "Value"], accountancyRows(accountancy, input.state)),
     `Lifetime placed <b>${input.state.strategyStats.liveOrdersPlaced}</b> · cancelled <b>${input.state.strategyStats.liveOrdersCancelled}</b>`,
   ];
 

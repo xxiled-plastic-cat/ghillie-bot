@@ -39,17 +39,32 @@ describe("telegramReports", () => {
       at: "2026-08-01T12:00:00.000Z",
     });
 
-    assert.match(report.rich, /### Ghillie tick · 2026-08-01T12:00:00\.000Z/);
+    assert.match(report.rich, /### ━━ Ghillie tick ━━/);
+    assert.match(report.rich, /### ━━ end tick ━━/);
+    assert.match(report.rich, /`2026-08-01T12:00:00\.000Z`/);
     assert.match(report.rich, /\*\*Wallet\*\*/);
-    assert.match(report.rich, /### Accountancy/);
-    assert.match(report.rich, /Total economic \*\*/);
     assert.match(report.rich, /### Actions/);
+    assert.match(report.rich, /\| Action \| Count \|/);
+    assert.match(report.rich, /\| Placed \| 1 \|/);
+    assert.match(report.rich, /### Bids/);
+    assert.match(report.rich, /\| Lane \| Bid \|/);
+    assert.match(report.rich, /### Accountancy/);
+    assert.match(report.rich, /\| Total economic \|/);
+    assert.match(report.rich, /### Action details/);
     assert.match(report.rich, /\| Kind \| Detail \|/);
     assert.match(report.rich, /### Spend/);
     assert.match(report.rich, /Amarok x402: \*\*2\*\* call\(s\), `75000` USDC base units/);
     assert.match(report.rich, /ZeroSignal inference/);
     assert.match(report.rich, /<details>/);
     assert.match(report.rich, /Warnings/);
+
+    assert.match(report.html, /━━ Ghillie tick ━━/);
+    assert.match(report.html, /━━ end tick ━━/);
+    assert.match(report.html, /<pre>/);
+    assert.match(report.html, /Action\s+Count/);
+    assert.match(report.html, /Total bid/);
+    assert.match(report.plain, /======== Ghillie tick ========/);
+    assert.match(report.plain, /======== end tick ========/);
   });
 
   it("escapes HTML metacharacters in action detail", () => {
@@ -61,7 +76,7 @@ describe("telegramReports", () => {
       at: "2026-08-01T12:00:00.000Z",
     });
 
-    assert.match(report.html, /<b>Ghillie tick/);
+    assert.match(report.html, /━━ Ghillie tick/);
     assert.match(report.html, /Placed &lt;bid&gt; &amp; ask/);
     assert.doesNotMatch(report.html, /Placed <bid>/);
   });
@@ -84,11 +99,12 @@ describe("telegramReports", () => {
 
     assert.match(report.plain, /Ghillie daily · 2026-08-01/);
     assert.match(report.plain, /Wallet: \$55\.50 USDC/);
-    assert.match(report.plain, /Trading:/);
+    assert.match(report.plain, /Trading realised/);
     assert.match(report.plain, /Total economic/);
     assert.match(report.plain, /Lifetime: placed=9 cancelled=2/);
     assert.match(report.plain, /Amarok x402: 1 call\(s\), 100000 USDC base units/);
     assert.match(report.rich, /### Ghillie daily/);
+    assert.match(report.rich, /### Bids/);
     assert.match(report.rich, /### Spend/);
   });
 
