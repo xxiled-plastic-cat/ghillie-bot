@@ -56,7 +56,7 @@ existing TypeScript style until those land.
 | Amarok MCP + x402 | `src/integrations/amarok/` |
 | zs-proxy client | `src/integrations/zerosignal/` |
 | Bot state (Spaces/FS) | `src/integrations/storage/` |
-| Dashboard | `apps/alpha-dashboard/` |
+| Dashboard (deprecated) | `apps/alpha-dashboard/` — prefer https://amarok.compx.io/user-agents |
 | Config / env template | `.env.example`, `config/` |
 
 ## Pull requests

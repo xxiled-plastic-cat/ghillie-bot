@@ -42,6 +42,18 @@ Optional plan-review **operator preferences** load from `{DO_SPACES_PREFIX}/oper
 
 No Postgres / Supabase is required.
 
+### Public PnL showcase
+
+After live ticks (and when the dashboard snapshot builder runs), Ghillie publishes a **redacted** public accounting JSON to `{DO_SPACES_PREFIX}/public/pnl.json` with object ACL `public-read` (locally: `{BOT_STATE_DATA_DIR}/{prefix}/public/pnl.json`). Private bot-state remains unlisted.
+
+Point Amarok’s website at the CDN URL:
+
+```env
+PUBLIC_GHILLIE_ACCOUNTING_URL=https://{bucket}.{region}.cdn.digitaloceanspaces.com/{DO_SPACES_PREFIX}/public/pnl.json
+```
+
+Public portfolio (positions / orders / balances) is served by Amarok free route `GET /public/agents/ghillie/portfolio`. The operator-facing page is https://amarok.compx.io/user-agents.
+
 `ALPHA_API_KEY` is still used for Alpha SDK **venue ops** Amarok does not expose yet (wallet open-order sync). Research and limit placement go through Amarok MCP with per-call x402 payments from the agent wallet.
 
 ## ZeroSignal (zs-proxy)
@@ -139,15 +151,12 @@ npm test
 ```
 
 `ghillie:*` aliases (`ghillie:live`, `ghillie:cron:live`, `ghillie:dashboard`, …) wrap the same `alpha:*` scripts; `alpha:*` remains canonical.
-### Dashboard (read-only)
 
-```bash
-npm --prefix apps/alpha-dashboard install
-npm run alpha:dashboard
-```
+### Dashboard (deprecated)
 
-- API: `http://127.0.0.1:8787`
-- Web UI: `http://127.0.0.1:5174`
+The local Vite ops dashboard is **deprecated**. Use the public Ghillie showcase on Amarok instead: https://amarok.compx.io/user-agents
+
+`npm run alpha:dashboard` remains available for operators short-term (API `http://127.0.0.1:8787`, UI `http://127.0.0.1:5174`) but should not receive new features.
 
 ### Cron
 

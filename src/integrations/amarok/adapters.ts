@@ -81,6 +81,60 @@ export function marketFromAmarok(raw: unknown): AlphaMarket | undefined {
   };
 }
 
+type BookLevel = { price: number; quantityShares: number; owner?: string };
+
+function parseBookLevels(raw: unknown): BookLevel[] {
+  if (!Array.isArray(raw)) return [];
+  const levels: BookLevel[] = [];
+  for (const row of raw) {
+    const record = asRecord(row);
+    if (!record) continue;
+    const price = asNumber(record.price) ?? asNumber(record.p);
+    const quantityShares =
+      asNumber(record.quantityShares) ?? asNumber(record.size) ?? asNumber(record.quantity) ?? asNumber(record.q);
+    if (price === undefined || quantityShares === undefined || price <= 0 || quantityShares <= 0) continue;
+    const owner = asString(record.owner) ?? asString(record.address);
+    levels.push(owner ? { price, quantityShares, owner } : { price, quantityShares });
+  }
+  return levels;
+}
+
+/** Nominal size so top-of-book-only Amarok books still look two-sided (~$1 depth). */
+function syntheticLevel(price: number | undefined, sizeHint?: number): BookLevel[] {
+  if (price === undefined || price <= 0) return [];
+  const quantityShares = sizeHint !== undefined && sizeHint > 0 ? sizeHint : Math.max(1, 1 / price);
+  return [{ price, quantityShares }];
+}
+
+function firstNonEmptyLevels(...candidates: BookLevel[][]): BookLevel[] {
+  for (const levels of candidates) {
+    if (levels.length > 0) return levels;
+  }
+  return [];
+}
+
+function sideOrdersFromAmarok(
+  book: Record<string, unknown>,
+  side: "yes" | "no",
+  bid: number | undefined,
+  ask: number | undefined,
+): { bids: BookLevel[]; asks: BookLevel[] } {
+  const nested = asRecord(book[side]) ?? asRecord(book[`${side}SideOrders`]) ?? asRecord(book[`${side}Orders`]);
+  const bids = firstNonEmptyLevels(
+    parseBookLevels(nested?.bids),
+    parseBookLevels(book[`${side}Bids`]),
+    parseBookLevels(book[`${side}BidLevels`]),
+    syntheticLevel(bid, asNumber(book[`${side}BidSize`]) ?? asNumber(book.bidSize)),
+  );
+  const asks = firstNonEmptyLevels(
+    parseBookLevels(nested?.asks),
+    parseBookLevels(book[`${side}Asks`]),
+    parseBookLevels(book[`${side}AskLevels`]),
+    syntheticLevel(ask, asNumber(book[`${side}AskSize`]) ?? asNumber(book.askSize)),
+  );
+  return { bids, asks };
+}
+
 export function orderbookFromAmarok(market: AlphaMarket, rawBook: unknown): AlphaOrderbook {
   const book = asRecord(rawBook) ?? {};
   const yesBid = asNumber(book.yesBid) ?? asNumber(book.bestBid);
@@ -92,6 +146,8 @@ export function orderbookFromAmarok(market: AlphaMarket, rawBook: unknown): Alph
     (yesBid !== undefined && yesAsk !== undefined ? yesAsk - yesBid : undefined) ??
     (asNumber(book.spreadBps) !== undefined ? asNumber(book.spreadBps)! / 10_000 : undefined);
   const noSpread = asNumber(book.noSpread) ?? (noBid !== undefined && noAsk !== undefined ? noAsk - noBid : undefined);
+  const yesSideOrders = sideOrdersFromAmarok(book, "yes", yesBid, yesAsk);
+  const noSideOrders = sideOrdersFromAmarok(book, "no", noBid, noAsk);
   return {
     marketId: market.id,
     marketAppId: market.marketAppId,
@@ -106,8 +162,8 @@ export function orderbookFromAmarok(market: AlphaMarket, rawBook: unknown): Alph
     yesSpread,
     noSpread,
     bestSpread: Math.max(yesSpread ?? 0, noSpread ?? 0) || undefined,
-    yesSideOrders: { bids: [], asks: [] },
-    noSideOrders: { bids: [], asks: [] },
+    yesSideOrders,
+    noSideOrders,
     raw: rawBook,
   };
 }

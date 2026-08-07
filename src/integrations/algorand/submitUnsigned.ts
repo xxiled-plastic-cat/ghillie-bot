@@ -19,6 +19,8 @@ const executionQuoteItemSchema = z
     encodedTransactions: z.array(z.string().min(1)).min(1).optional(),
     userSignIndexes: z.array(z.number().int().nonnegative()).optional(),
     escrowAppId: z.number().int().positive().optional(),
+    /** Some shapes put createEscrowIndex on the item; live Amarok usually nests it under `group`. */
+    createEscrowIndex: z.number().int().nonnegative().optional(),
     /** Live Amarok nests unsigned txns under `group` (not flattened). */
     group: executionGroupSchema.optional(),
     meta: z
@@ -90,6 +92,7 @@ function assertNotSubmitted(payload: unknown): void {
 export function parseExecutionQuotePayload(payload: unknown): {
   unsignedTxnsBase64: string[];
   escrowAppId?: number;
+  createEscrowIndex?: number;
   userSignIndexes?: number[];
 } {
   assertNotSubmitted(payload);
@@ -99,16 +102,36 @@ export function parseExecutionQuotePayload(payload: unknown): {
   return {
     unsignedTxnsBase64: extractUnsignedTxns(item),
     escrowAppId: item.escrowAppId,
+    createEscrowIndex: item.createEscrowIndex ?? item.group?.createEscrowIndex,
     userSignIndexes: item.userSignIndexes,
   };
 }
 
-function extractCreatedAppId(confirmation: Record<string, unknown>): number | undefined {
-  const direct =
-    (typeof confirmation["application-index"] === "number" && confirmation["application-index"]) ||
-    (typeof confirmation.applicationIndex === "number" && confirmation.applicationIndex) ||
-    undefined;
-  if (typeof direct === "number" && Number.isFinite(direct) && direct > 0) return direct;
+function asPositiveAppId(value: unknown): number | undefined {
+  if (typeof value === "bigint") {
+    const n = Number(value);
+    return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Escrow apps are often created as an *inner* appl create on a later group
+ * member — not on the first (pay/axfer) txn that sendRawTransaction returns.
+ */
+export function extractCreatedAppId(confirmation: Record<string, unknown>): number | undefined {
+  const direct = asPositiveAppId(
+    confirmation["application-index"] ??
+      confirmation.applicationIndex ??
+      confirmation["created-application-index"] ??
+      confirmation.createdApplicationIndex,
+  );
+  if (direct !== undefined) return direct;
 
   const inner = confirmation["inner-txns"] ?? confirmation.innerTxns;
   if (!Array.isArray(inner)) return undefined;
@@ -118,6 +141,24 @@ function extractCreatedAppId(confirmation: Record<string, unknown>): number | un
     if (found !== undefined) return found;
   }
   return undefined;
+}
+
+function txIdsFromSignedGroup(signed: Uint8Array[]): string[] {
+  return signed.map((blob) => algosdk.decodeSignedTransaction(blob).txn.txID());
+}
+
+/** Prefer the create-escrow member, then scan the rest of the group. */
+function confirmationWaitOrder(txIds: string[], createEscrowIndex?: number): string[] {
+  if (
+    createEscrowIndex === undefined ||
+    !Number.isInteger(createEscrowIndex) ||
+    createEscrowIndex < 0 ||
+    createEscrowIndex >= txIds.length
+  ) {
+    return [...txIds];
+  }
+  const preferred = txIds[createEscrowIndex]!;
+  return [preferred, ...txIds.filter((id) => id !== preferred)];
 }
 
 /**
@@ -166,24 +207,39 @@ export async function signAndSubmitUnsignedGroup(params: {
   unsignedTxnsBase64: string[];
   userSignIndexes?: number[];
   knownEscrowAppId?: number;
+  createEscrowIndex?: number;
 }): Promise<UnsignedSubmitResult> {
   const algod = new algosdk.Algodv2(params.algodToken ?? "", params.algodServer, "");
   const signed = signUnsignedGroup(params);
+  const txIds = txIdsFromSignedGroup(signed);
 
   const submitted = (await algod.sendRawTransaction(signed).do()) as { txid?: string; txId?: string };
-  const txId = submitted.txid ?? submitted.txId;
-  if (!txId) throw new Error("algod sendRawTransaction returned no txid");
+  const submittedTxId = submitted.txid ?? submitted.txId;
+  if (!submittedTxId) throw new Error("algod sendRawTransaction returned no txid");
 
-  const confirmation = (await algosdk.waitForConfirmation(algod, txId, 8)) as unknown as Record<string, unknown>;
-  const confirmedRoundRaw = confirmation["confirmed-round"] ?? confirmation.confirmedRound;
-  const confirmedRound = typeof confirmedRoundRaw === "bigint" ? Number(confirmedRoundRaw) : asFiniteNumber(confirmedRoundRaw);
-  const escrowAppId = params.knownEscrowAppId ?? extractCreatedAppId(confirmation);
+  let escrowAppId = params.knownEscrowAppId;
+  let confirmedRound: number | undefined;
+  const waitOrder = confirmationWaitOrder(txIds, params.createEscrowIndex);
+
+  for (const txId of waitOrder) {
+    const confirmation = (await algosdk.waitForConfirmation(algod, txId, 8)) as unknown as Record<string, unknown>;
+    const confirmedRoundRaw = confirmation["confirmed-round"] ?? confirmation.confirmedRound;
+    confirmedRound = asFiniteNumber(confirmedRoundRaw) ?? confirmedRound;
+    if (escrowAppId === undefined) {
+      escrowAppId = extractCreatedAppId(confirmation);
+    }
+    // Once we have escrow + a confirmed round, remaining waits are unnecessary.
+    if (escrowAppId !== undefined && confirmedRound !== undefined) break;
+  }
+
   if (escrowAppId === undefined) {
-    throw new Error(`Could not determine escrowAppId from confirmation for tx ${txId}`);
+    throw new Error(
+      `Could not determine escrowAppId from confirmation for tx group [${txIds.join(", ")}] (submitted=${submittedTxId})`,
+    );
   }
 
   return {
-    txIds: [txId],
+    txIds,
     confirmedRound,
     escrowAppId,
   };
