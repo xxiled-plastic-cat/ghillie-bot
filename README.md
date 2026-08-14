@@ -136,6 +136,29 @@ npm run amarok:execution-dry -- --market <marketAppId>
 npm run amarok:execution-dry -- --market <marketAppId> --submit
 ```
 
+### Gated paid / place e2e smoke
+
+Operator-only path that exercises discovery → one cheap paid research call → unsigned limit quote → dry-run sign decode. **Default is dry-run** (no algod submit). Refuses to spend under `GITHUB_ACTIONS`.
+
+```bash
+# Dry-run (spends ~0.015 USDC x402 + ALGO fees for two payments; does not place)
+npm run amarok:e2e-smoke
+
+# Optional overrides
+npm run amarok:e2e-smoke -- --market <marketAppId> --price 0.45 --size 1
+
+# Gated live place (one limit via Amarok + algod) — NOT for CI
+GHILLIE_E2E_LIVE=1 npm run amarok:e2e-smoke -- --submit
+```
+
+| Step | x402 (from Amarok discovery) |
+| --- | --- |
+| `amarok_list_opportunities` | ≤ **0.005 USDC** (5_000 micro-USDC) |
+| `amarok_get_execution_quote` | ≤ **0.01 USDC** (10_000 micro-USDC) |
+| **Dry-run total** | ≈ **0.015 USDC** + ALGO network fees for the two payment txns |
+| Live `--submit` | Same x402 + ALGO fees for the place group (use a small-spend hot wallet) |
+
+Live place also requires `ALPHA_WALLET_MNEMONIC` / algod as usual. Never set `GHILLIE_E2E_LIVE=1` in GitHub Actions.
 ## Alpha commands
 
 ```bash
@@ -206,4 +229,4 @@ Integration code lives under `src/integrations/amarok/` (MCP client + x402 payme
 
 ## Roadmap
 
-See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (prompt review, Amarok hardening, lint/CI, and more).
+See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (lint/CI and more). Operator dry-run: [docs/QUICKSTART.md](docs/QUICKSTART.md).

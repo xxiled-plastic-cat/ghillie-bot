@@ -91,7 +91,7 @@ Before shipping any LLM decide / research agent:
 
 - [x] Inventory every system / developer / tool prompt — plan review: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts); zs smoke: [`src/cli/zsSmoke.ts`](../src/cli/zsSmoke.ts)
 - [x] Review for: custody boundaries (no mnemonic / `paymentSignature` / execution tools in model context) — plan review payload is host-built quotes/books only; `amarok_get_execution_quote` stays host-only
-- [ ] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data)
+- [x] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data)
 - [x] Align tool allowlists with Amarok: research tools yes; `amarok_get_execution_quote` host-only — plan-review path uses **no** tools
 - [x] Add golden / fixture tests for prompt + tool schema sanitization where practical (`planReview.test.ts`, `zerosignal.test.ts`)
 - [x] Document prompt ownership (which file is canonical) — plan review base prompt lives in `src/alpha/planReview/prompt.ts`; optional operator prefs via Spaces/local markdown (brownie pattern)
@@ -99,9 +99,9 @@ Before shipping any LLM decide / research agent:
 ### 6. Amarok / MCP hardening
 
 - [x] CF Worker `Illegal invocation` fix deployed (`fetch.bind` on Worker + x402 client) — MCP `initialize` healthy at `https://amarok-mcp.compx.io/mcp`
-- [~] Remote paid/free tool path still depends on Amarok API origin health (recent probes saw **Cloudflare 522** from API/`/discovery`, not Worker Illegal invocation)
-- [ ] End-to-end paid smoke: opportunities → paymentSignature → data (small spend wallet) once API origin is stable
-- [ ] End-to-end place dry-run then one gated live limit via Amarok + algod
+- [x] Remote paid/free tool path depends on Amarok API origin health — origin `/health` + `/discovery` 200 as of 2026-08-14 (NEO-13 / NEO-23)
+- [x] End-to-end paid smoke: opportunities → paymentSignature → data (small spend wallet) — `npm run amarok:e2e-smoke` (dry-run default)
+- [x] End-to-end place dry-run then one gated live limit via Amarok + algod — dry-run default; live requires `GHILLIE_E2E_LIVE=1` + `--submit` (not CI)
 - [ ] When Amarok adds cancel / claim / merge / split shapes, retire remaining Alpha SDK venue-ops usage
 - [ ] Revisit parity lane only if Amarok (or local builders) can support required legs
 
@@ -110,7 +110,7 @@ Before shipping any LLM decide / research agent:
 - [ ] Operator `.env` cleanup guide (delete unused `ALPHA_API_KEY` / Div3rsaFi / `POLY_*` leftovers if not needed)
 - [ ] Add `eslint` + `prettier` (or Biome) and wire into CI
 - [ ] GitHub Actions: typecheck + unit tests on PR (no live paid MCP in CI)
-- [ ] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs)
+- [x] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs) — see [`docs/QUICKSTART.md`](./QUICKSTART.md)
 - [ ] Decide fate of in-tree Div3rsaFi / Polymarket **code** (leave legacy, archive folder, or remove — env template already ignores them)
 
 ### 8. Product / trading follow-ups
@@ -124,12 +124,12 @@ Before shipping any LLM decide / research agent:
 
 ## Suggested order
 
-1. Stabilize Amarok API origin (522s) + e2e paid/place smoke
+1. ~~Stabilize Amarok API origin (522s) + e2e paid/place smoke~~ (done — NEO-13 origin; NEO-23 `amarok:e2e-smoke`)
 2. ~~Wire ZeroSignal decide / review into the live loop~~ (done — always on for entry place)
-3. Finish remaining prompt review notes (risk language) if shipping publicly
+3. ~~Finish remaining prompt review notes (risk language) if shipping publicly~~ (done)
 4. ~~MIT `LICENSE` + README OSS section~~ (done; CONTRIBUTING done)
 5. ~~Naming leftovers (GitHub rename, log prefixes, dashboard branding)~~ (done)
-6. Lint / CI / `QUICKSTART.md` polish
+6. Lint / CI polish
 
 ---
 

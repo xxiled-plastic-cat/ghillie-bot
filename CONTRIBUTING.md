@@ -41,9 +41,11 @@ existing TypeScript style until those land.
 - `npm test` mocks paid Amarok / ZeroSignal behavior and should **not** spend
   funds.
 - CLI scripts such as `amarok:opportunities`, `amarok:rewards`,
-  `amarok:spreads`, `amarok:parity`, and `amarok:execution-dry` **do** spend
-  USDC (or submit when you pass `--submit`). Use them intentionally on a wallet
-  you control.
+  `amarok:spreads`, `amarok:parity`, `amarok:execution-dry`, and
+  `amarok:e2e-smoke` **do** spend USDC (or submit when you pass `--submit`
+  with `GHILLIE_E2E_LIVE=1`). Use them intentionally on a wallet you control.
+  Prefer `npm run amarok:e2e-smoke` dry-run (~0.015 USDC) over ad-hoc paid
+  calls; see [docs/QUICKSTART.md](./docs/QUICKSTART.md).
 - `npm run zs:smoke` hits zs-proxy / ZeroSignal and incurs inference cost when
   the proxy is funded.
 
