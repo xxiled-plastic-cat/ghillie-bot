@@ -58,7 +58,7 @@ Public portfolio (positions / orders / balances) is served by Amarok free route 
 
 ## ZeroSignal (zs-proxy)
 
-LLM calls go **only** through [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback. Cloud/Docker bundles **zs-proxy 0.13.2** as an in-container sidecar; local Node needs a host install.
+LLM calls go **only** through [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback. Cloud/Docker bundles **zs-proxy 0.15.1** as an in-container sidecar; local Node needs a host install.
 
 ### Docker (recommended for cloud)
 
