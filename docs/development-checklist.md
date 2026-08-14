@@ -109,7 +109,7 @@ Before shipping any LLM decide / research agent:
 
 - [ ] Operator `.env` cleanup guide (delete unused `ALPHA_API_KEY` / Div3rsaFi / `POLY_*` leftovers if not needed)
 - [ ] Add `eslint` + `prettier` (or Biome) and wire into CI
-- [ ] GitHub Actions: typecheck + unit tests on PR (no live paid MCP in CI)
+- [x] GitHub Actions: typecheck + unit tests on PR (no live paid MCP in CI) — `.github/workflows/ci.yml`
 - [ ] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs)
 - [ ] Decide fate of in-tree Div3rsaFi / Polymarket **code** (leave legacy, archive folder, or remove — env template already ignores them)
 

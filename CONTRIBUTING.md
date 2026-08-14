@@ -18,7 +18,7 @@ code. To **run** the bot as an operator, start with [README.md](./README.md).
 ## Development setup
 
 ```bash
-# Node 20+
+# Node 20+ (CI and Docker use Node 22 from `.nvmrc`)
 npm install
 cp .env.example .env
 # fill ALPHA_WALLET_MNEMONIC (and related) for local Amarok dry-runs
@@ -34,6 +34,11 @@ Optional: Telegram and DigitalOcean Spaces. Without Spaces, bot state lands unde
 npm run typecheck
 npm test
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the same commands on every
+pull request and on pushes to `main` / `dev`: Node from `.nvmrc`, `npm ci`,
+`npm run typecheck`, `npm test`. CI does **not** run live Amarok MCP or
+zs-proxy smoke.
 
 Format / lint tooling is not wired yet (see the development checklist). Match
 existing TypeScript style until those land.
