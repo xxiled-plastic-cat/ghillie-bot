@@ -1,0 +1,4 @@
+{
+  "name": "Ghillie-bot",
+  "install": "npm ci && ([ -f .env ] || cp .env.example .env)"
+}
