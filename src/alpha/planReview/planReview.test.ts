@@ -12,6 +12,7 @@ import {
   entryReviewId,
   extractJsonObjectText,
   parsePlanReviewResponse,
+  PLAN_REVIEW_PROMPT,
   runPlanReview,
 } from "./index.js";
 import type { ResponsesClient } from "../../integrations/zerosignal/index.js";
@@ -64,7 +65,10 @@ function twoSidedBook(marketAppId = APP_ID): AlphaOrderbook {
   };
 }
 
-function market(marketAppId = APP_ID): AlphaMarket {
+function market(
+  marketAppId = APP_ID,
+  extras: Pick<AlphaMarket, "endTs" | "closeTime"> = {},
+): AlphaMarket {
   return {
     id: "m1",
     marketAppId,
@@ -74,6 +78,7 @@ function market(marketAppId = APP_ID): AlphaMarket {
     volume: 50,
     reward: { isRewardMarket: true, dailyRewardsUsd: 5 },
     raw: {},
+    ...extras,
   };
 }
 
@@ -89,6 +94,25 @@ function messageResponse(text: string) {
     output_text: text,
   };
 }
+
+describe("planReview prompt", () => {
+  it("includes Alpha market risk language (not financial advice; fail-closed incomplete data)", () => {
+    assert.match(PLAN_REVIEW_PROMPT, /This is not financial advice/i);
+    assert.match(PLAN_REVIEW_PROMPT, /fail-closed operational gate/i);
+    assert.match(PLAN_REVIEW_PROMPT, /Skip\/veto/);
+    assert.match(PLAN_REVIEW_PROMPT, /books, expiry, or inventory/);
+    assert.match(PLAN_REVIEW_PROMPT, /Never invent a size/);
+    assert.match(PLAN_REVIEW_PROMPT, /fail closed on that id instead/);
+    assert.match(PLAN_REVIEW_PROMPT, /incomplete_data — book, expiry, or inventory/);
+    assert.match(PLAN_REVIEW_PROMPT, /Do not shrink or approve when data is incomplete/);
+  });
+
+  it("keeps the OS base prompt generic (operator prefs stay out of band)", () => {
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /OPERATOR PREFERENCES/);
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /amarok_/);
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /ALPHA_ENABLE_/);
+  });
+});
 
 describe("planReview payload", () => {
   it("computes post-fill inventory for a YES bid", () => {
@@ -122,8 +146,31 @@ describe("planReview payload", () => {
     assert.equal(payload.planned[0]!.id, entryReviewId(entry, 0));
     assert.equal(payload.planned[0]!.book.twoSided, true);
     assert.equal(payload.planned[0]!.book.volume, 50);
+    assert.deepEqual(payload.planned[0]!.expiry, {});
     assert.deepEqual(payload.planned[0]!.postFillInventory, { yes: 5, no: 0 });
     assert.equal(payload.portfolio.walletUsdc, 20);
+  });
+
+  it("includes expiry when the market has endTs/closeTime", () => {
+    const state = emptyAlphaState(100);
+    ensurePositionByAppId(state, { marketAppId: APP_ID, marketId: "m1", title: "Test market" });
+    const entry = quote({ side: "bid", outcome: "YES", source: "reward", price: 0.4, sizeShares: 5 });
+    const payload = buildPlanReviewPayload({
+      entryQuotes: [entry],
+      state,
+      orderbooks: new Map([[APP_ID, twoSidedBook()]]),
+      markets: new Map([
+        [APP_ID, market(APP_ID, { endTs: 1_700_000_000, closeTime: "2023-11-14T22:13:20.000Z" })],
+      ]),
+      walletUsdc: 20,
+      inventoryCeilingUsd: 40,
+      maxSingleOrderUsd: 10,
+    });
+
+    assert.deepEqual(payload.planned[0]!.expiry, {
+      endTs: 1_700_000_000,
+      closeTime: "2023-11-14T22:13:20.000Z",
+    });
   });
 });
 
@@ -207,6 +254,20 @@ describe("planReview apply", () => {
     });
     assert.equal(applied.placementQueue.length, 0);
     assert.match(applied.actions[0]!.message, /missing maxNotionalUsd/);
+  });
+
+  it("rejects incomplete_data without inventing a shrink size", () => {
+    const entry = quote({ side: "bid", outcome: "YES", source: "reward" });
+    const id = entryReviewId(entry, 0);
+    const applied = applyPlanReviewDecisions({
+      placementQueue: [entry],
+      entryQuotes: [entry],
+      response: {
+        decisions: [{ id, action: "reject", reasons: ["incomplete_data"] }],
+      },
+    });
+    assert.equal(applied.placementQueue.length, 0);
+    assert.match(applied.actions[0]!.message, /incomplete_data/);
   });
 
   it("rejects entry with missing decision", () => {
@@ -381,5 +442,7 @@ describe("planReview runPlanReview", () => {
     assert.match(capturedInstructions ?? "", /OPERATOR PREFERENCES/);
     assert.match(capturedInstructions ?? "", /Prioritise reward-lane entries/);
     assert.match(capturedInstructions ?? "", /You are Ghillie's plan reviewer/);
+    assert.match(capturedInstructions ?? "", /This is not financial advice/);
+    assert.match(capturedInstructions ?? "", /Never invent a size/);
   });
 });

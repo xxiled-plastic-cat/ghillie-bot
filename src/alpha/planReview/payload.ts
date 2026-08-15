@@ -10,6 +10,11 @@ export type PlanReviewBookSnippet = {
   twoSided: boolean;
 };
 
+export type PlanReviewExpirySnippet = {
+  endTs?: number;
+  closeTime?: string;
+};
+
 export type PlanReviewPlannedEntry = {
   id: string;
   source: "reward" | "spread";
@@ -22,6 +27,8 @@ export type PlanReviewPlannedEntry = {
   notionalUsd: number;
   hostReason: string;
   book: PlanReviewBookSnippet;
+  /** Empty object when closeTime/endTs are missing — model should fail closed. */
+  expiry: PlanReviewExpirySnippet;
   postFillInventory: { yes: number; no: number };
 };
 
@@ -70,6 +77,17 @@ function outcomeBook(book: AlphaOrderbook | undefined, outcome: AlphaOutcome): {
   return outcome === "YES"
     ? { bid: book.yesBid, ask: book.yesAsk, spread: book.yesSpread }
     : { bid: book.noBid, ask: book.noAsk, spread: book.noSpread };
+}
+
+export function expirySnippet(market: AlphaMarket | undefined): PlanReviewExpirySnippet {
+  const snippet: PlanReviewExpirySnippet = {};
+  if (market?.endTs !== undefined && Number.isFinite(market.endTs)) {
+    snippet.endTs = market.endTs;
+  }
+  if (market?.closeTime) {
+    snippet.closeTime = market.closeTime;
+  }
+  return snippet;
 }
 
 export function computePostFillInventory(
@@ -147,6 +165,7 @@ export function buildPlanReviewPayload(input: {
         volume: market?.volume ?? stats?.volume,
         twoSided,
       },
+      expiry: expirySnippet(market),
       postFillInventory: computePostFillInventory(input.state, quote),
     };
   });
