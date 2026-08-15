@@ -7,10 +7,12 @@ export {
   buildPlanReviewPayload,
   computePostFillInventory,
   entryReviewId,
+  expirySnippet,
   isEntryQuote,
 } from "./payload.js";
 export type {
   PlanReviewBookSnippet,
+  PlanReviewExpirySnippet,
   PlanReviewPayload,
   PlanReviewPlannedEntry,
 } from "./payload.js";

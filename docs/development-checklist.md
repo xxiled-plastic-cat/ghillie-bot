@@ -91,7 +91,7 @@ Before shipping any LLM decide / research agent:
 
 - [x] Inventory every system / developer / tool prompt — plan review: [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts); zs smoke: [`src/cli/zsSmoke.ts`](../src/cli/zsSmoke.ts)
 - [x] Review for: custody boundaries (no mnemonic / `paymentSignature` / execution tools in model context) — plan review payload is host-built quotes/books only; `amarok_get_execution_quote` stays host-only
-- [ ] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data)
+- [x] Review for: Alpha market risk language (not financial advice; fail-closed on incomplete data) — RISK section in [`src/alpha/planReview/prompt.ts`](../src/alpha/planReview/prompt.ts); skip/veto when books, expiry, or inventory are incomplete; never invent a size
 - [x] Align tool allowlists with Amarok: research tools yes; `amarok_get_execution_quote` host-only — plan-review path uses **no** tools
 - [x] Add golden / fixture tests for prompt + tool schema sanitization where practical (`planReview.test.ts`, `zerosignal.test.ts`)
 - [x] Document prompt ownership (which file is canonical) — plan review base prompt lives in `src/alpha/planReview/prompt.ts`; optional operator prefs via Spaces/local markdown (brownie pattern)
@@ -126,7 +126,7 @@ Before shipping any LLM decide / research agent:
 
 1. Stabilize Amarok API origin (522s) + e2e paid/place smoke
 2. ~~Wire ZeroSignal decide / review into the live loop~~ (done — always on for entry place)
-3. Finish remaining prompt review notes (risk language) if shipping publicly
+3. ~~Finish remaining prompt review notes (risk language) if shipping publicly~~ (done)
 4. ~~MIT `LICENSE` + README OSS section~~ (done; CONTRIBUTING done)
 5. ~~Naming leftovers (GitHub rename, log prefixes, dashboard branding)~~ (done)
 6. Lint / CI polish (`QUICKSTART.md` done)

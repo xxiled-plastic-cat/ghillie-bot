@@ -43,4 +43,5 @@ quotes.
 
 - Shrink rather than reject when the thesis is sound but notional is large
   versus visible depth.
-- Fail closed (reject) when book or inventory fields look incomplete.
+- Fail closed (reject) when book, expiry, or inventory fields look incomplete.
+  Do not invent a size.
