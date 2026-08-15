@@ -4,6 +4,8 @@ Formerly **Nuckelavee**. Alpha Arcade **user-agent**: walleted trading bot that 
 
 Hard boundary: Amarok never holds keys, never signs payments, and never submits orders (`executionSubmitted: false`). This bot owns x402 USDC micropayments, custody, cancel/claim/merge/split venue ops, fills, inventory, and the live loop.
 
+**Operators:** start with [QUICKSTART.md](./QUICKSTART.md) (clone → `.env` → zs-proxy → dry-run tick → cron / Telegram / costs). Do not begin with live cron or `docker compose up`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, PR checks, and conduct. Report security issues privately per [SECURITY.md](./SECURITY.md).
@@ -25,8 +27,10 @@ Required for Amarok-backed Alpha:
 AMAROK_MCP_URL=https://amarok-mcp.compx.io/mcp
 MAX_DAILY_X402_BASE_UNITS=5000000
 ALPHA_WALLET_MNEMONIC="word1 ... word25"
-ALPHA_ENABLE_LIVE_TRADING=true
-ALPHA_CONFIRM_RISK=true
+# First tick: leave live gates false (QUICKSTART dry-run).
+# Live placement / Docker live cron need both true:
+# ALPHA_ENABLE_LIVE_TRADING=true
+# ALPHA_CONFIRM_RISK=true
 # Bot state: DigitalOcean Spaces (preferred) or local FS fallback
 DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
 DO_SPACES_BUCKET=
@@ -160,7 +164,10 @@ The local Vite ops dashboard is **deprecated**. Use the public Ghillie showcase 
 
 ### Cron
 
+Dry-run first: `npm run alpha:cron:live-dry-run -- --once` — see [QUICKSTART.md](./QUICKSTART.md).
+
 ```bash
+npm run alpha:cron:live-dry-run
 npm run alpha:cron
 npm run alpha:cron:live
 npm run alpha:cron:live:once
@@ -200,7 +207,7 @@ Integration code lives under `src/integrations/amarok/` (MCP client + x402 payme
 
 ## Operator notes
 
-- Delete obsolete Div3rsaFi / `POLY_*` knobs if unused. Keep `ALPHA_API_KEY` for Alpha SDK wallet-order sync until Amarok covers venue ops.
+See [QUICKSTART.md](./QUICKSTART.md) for leftover env cleanup (`POLY_*` / Div3rsaFi / `DATABASE_URL`; keep `ALPHA_API_KEY` for wallet-order sync).
 - Use a dedicated hot wallet with USDC for x402 + trading collateral and ALGO for fees (and zs-proxy prepaid ticket / MBR).
 - The mnemonic is never sent to Amarok, Telegram, logs, or the model; import the same mnemonic into zs-proxy for inference.
 
