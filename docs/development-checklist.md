@@ -107,10 +107,10 @@ Before shipping any LLM decide / research agent:
 
 ### 7. Repo hygiene & DX
 
-- [ ] Operator `.env` cleanup guide (delete unused `ALPHA_API_KEY` / Div3rsaFi / `POLY_*` leftovers if not needed)
+- [x] Operator `.env` cleanup guide (delete unused Div3rsaFi / `POLY_*` leftovers; keep `ALPHA_API_KEY` for venue-ops) — [QUICKSTART.md](../QUICKSTART.md)
 - [ ] Add `eslint` + `prettier` (or Biome) and wire into CI
 - [x] GitHub Actions: typecheck + unit tests on PR (no live paid MCP in CI) — `.github/workflows/ci.yml`
-- [ ] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs)
+- [x] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs)
 - [ ] Decide fate of in-tree Div3rsaFi / Polymarket **code** (leave legacy, archive folder, or remove — env template already ignores them)
 
 ### 8. Product / trading follow-ups
@@ -129,7 +129,7 @@ Before shipping any LLM decide / research agent:
 3. ~~Finish remaining prompt review notes (risk language) if shipping publicly~~ (done)
 4. ~~MIT `LICENSE` + README OSS section~~ (done; CONTRIBUTING done)
 5. ~~Naming leftovers (GitHub rename, log prefixes, dashboard branding)~~ (done)
-6. Lint / CI / `QUICKSTART.md` polish
+6. Lint / CI polish (`QUICKSTART.md` done)
 
 ---
 

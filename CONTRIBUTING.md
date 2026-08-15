@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for helping improve Ghillie-bot. This guide is for people changing the
-code. To **run** the bot as an operator, start with [README.md](./README.md).
+code. To **run** the bot as an operator, start with [QUICKSTART.md](./QUICKSTART.md).
 
 ## Ground rules
 
@@ -69,7 +69,7 @@ existing TypeScript style until those land.
 1. Keep changes focused; match existing TypeScript style.
 2. Add or update tests when behavior changes (payments, plan review, state,
    risk).
-3. Update docs (`README.md`, `.env.example`) when you change operator-facing
+3. Update docs (`QUICKSTART.md`, `README.md`, `.env.example`) when you change operator-facing
    setup, costs, or env vars.
 4. Describe **why** in the PR body, and note if you ran any live/mainnet
    commands.
