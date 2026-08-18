@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import algosdk from "algosdk";
-
+import {
+  parseExecutionQuotePayload,
+  regroupUnsignedTransactions,
+} from "../algorand/submitUnsigned.js";
+import { scanFromAmarok } from "./adapters.js";
+import { parseToolPayload } from "./client.js";
 import { AlgorandPaymentBuilder, encodePaymentNote } from "./payment.js";
 import { walletFromMnemonic } from "./wallet.js";
-import { parseToolPayload } from "./client.js";
-import { parseExecutionQuotePayload, regroupUnsignedTransactions } from "../algorand/submitUnsigned.js";
-import { scanFromAmarok } from "./adapters.js";
 
 const network = "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
 
@@ -50,10 +52,22 @@ function paymentRequest(amount: string, path = "/v1/alpha/opportunities") {
 
 test("rejects payment above Amarok endpoint ceiling", async () => {
   await assert.rejects(() => builder().build(paymentRequest("50001")), /endpoint ceiling/);
-  await assert.rejects(() => builder().build(paymentRequest("250001", "/v1/alpha/scan")), /endpoint ceiling/);
-  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/rewards")), /endpoint ceiling/);
-  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/spreads")), /endpoint ceiling/);
-  await assert.rejects(() => builder().build(paymentRequest("50001", "/v1/alpha/parity")), /endpoint ceiling/);
+  await assert.rejects(
+    () => builder().build(paymentRequest("250001", "/v1/alpha/scan")),
+    /endpoint ceiling/,
+  );
+  await assert.rejects(
+    () => builder().build(paymentRequest("50001", "/v1/alpha/rewards")),
+    /endpoint ceiling/,
+  );
+  await assert.rejects(
+    () => builder().build(paymentRequest("50001", "/v1/alpha/spreads")),
+    /endpoint ceiling/,
+  );
+  await assert.rejects(
+    () => builder().build(paymentRequest("50001", "/v1/alpha/parity")),
+    /endpoint ceiling/,
+  );
 });
 
 test("rejects unexpected resource origin", async () => {
@@ -85,7 +99,12 @@ test("encodePaymentNote includes path and nonce", () => {
 
 test("parseToolPayload reads MCP text JSON", () => {
   const payload = parseToolPayload({
-    content: [{ type: "text", text: JSON.stringify({ error: "PAYMENT_REQUIRED", mcpPayment: { paymentRequired: {} } }) }],
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ error: "PAYMENT_REQUIRED", mcpPayment: { paymentRequired: {} } }),
+      },
+    ],
   });
   assert.equal((payload as { error: string }).error, "PAYMENT_REQUIRED");
 });
@@ -191,7 +210,9 @@ test("scanFromAmarok adapts markets and books", () => {
       },
     },
     opportunitiesPayload: {
-      data: [{ kind: "lp_reward", marketAppId: 3100000001, title: "Sample", estimatedUsdPerDay: "12.4" }],
+      data: [
+        { kind: "lp_reward", marketAppId: 3100000001, title: "Sample", estimatedUsdPerDay: "12.4" },
+      ],
     },
   });
   assert.equal(scan.markets.length, 1);

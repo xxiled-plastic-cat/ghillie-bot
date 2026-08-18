@@ -1,6 +1,6 @@
-import dotenv from "dotenv";
-import { createServer } from "node:http";
 import type { ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import dotenv from "dotenv";
 
 import { buildAlphaDashboardSnapshot } from "./alphaDashboardData.js";
 
@@ -19,7 +19,10 @@ function withCorsHeaders(headers: Record<string, string> = {}): Record<string, s
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown): void {
-  response.writeHead(status, withCorsHeaders({ "content-type": "application/json; charset=utf-8" }));
+  response.writeHead(
+    status,
+    withCorsHeaders({ "content-type": "application/json; charset=utf-8" }),
+  );
   response.end(JSON.stringify(payload));
 }
 
@@ -52,7 +55,12 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (path !== "/api/alpha/dashboard" && path !== "/api/alpha/overview" && path !== "/api/alpha/positions" && path !== "/api/alpha/orders") {
+    if (
+      path !== "/api/alpha/dashboard" &&
+      path !== "/api/alpha/overview" &&
+      path !== "/api/alpha/positions" &&
+      path !== "/api/alpha/orders"
+    ) {
       sendJson(response, 404, { ok: false, error: "not_found" });
       return;
     }

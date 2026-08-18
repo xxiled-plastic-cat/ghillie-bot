@@ -1,21 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-
+import type { ResponsesClient } from "../../integrations/zerosignal/index.js";
 import type { AlphaConfig } from "../alphaConfig.js";
 import { emptyAlphaState } from "../alphaStateStore.js";
-import { ensurePositionByAppId } from "../inventoryView.js";
 import type { AlphaMarket, AlphaOrderbook, AlphaQuote } from "../alphaTypes.js";
+import { ensurePositionByAppId } from "../inventoryView.js";
 import {
   applyPlanReviewDecisions,
   buildPlanReviewPayload,
   computePostFillInventory,
   entryReviewId,
   extractJsonObjectText,
-  parsePlanReviewResponse,
   PLAN_REVIEW_PROMPT,
+  parsePlanReviewResponse,
   runPlanReview,
 } from "./index.js";
-import type { ResponsesClient } from "../../integrations/zerosignal/index.js";
 
 const APP_ID = 3162451457;
 
@@ -28,7 +27,9 @@ function testConfig(overrides: Partial<AlphaConfig> = {}): AlphaConfig {
   } as AlphaConfig;
 }
 
-function quote(partial: Partial<AlphaQuote> & Pick<AlphaQuote, "side" | "source" | "outcome">): AlphaQuote {
+function quote(
+  partial: Partial<AlphaQuote> & Pick<AlphaQuote, "side" | "source" | "outcome">,
+): AlphaQuote {
   const price = partial.price ?? 0.4;
   const sizeShares = partial.sizeShares ?? 5;
   return {
@@ -60,8 +61,14 @@ function twoSidedBook(marketAppId = APP_ID): AlphaOrderbook {
     noAsk: 0.61,
     noMid: 0.595,
     noSpread: 0.03,
-    yesSideOrders: { bids: [{ price: 0.39, quantityShares: 20 }], asks: [{ price: 0.42, quantityShares: 20 }] },
-    noSideOrders: { bids: [{ price: 0.58, quantityShares: 20 }], asks: [{ price: 0.61, quantityShares: 20 }] },
+    yesSideOrders: {
+      bids: [{ price: 0.39, quantityShares: 20 }],
+      asks: [{ price: 0.42, quantityShares: 20 }],
+    },
+    noSideOrders: {
+      bids: [{ price: 0.58, quantityShares: 20 }],
+      asks: [{ price: 0.61, quantityShares: 20 }],
+    },
   };
 }
 
@@ -131,7 +138,13 @@ describe("planReview payload", () => {
   it("builds compact payload with book and post-fill inventory", () => {
     const state = emptyAlphaState(100);
     ensurePositionByAppId(state, { marketAppId: APP_ID, marketId: "m1", title: "Test market" });
-    const entry = quote({ side: "bid", outcome: "YES", source: "reward", price: 0.4, sizeShares: 5 });
+    const entry = quote({
+      side: "bid",
+      outcome: "YES",
+      source: "reward",
+      price: 0.4,
+      sizeShares: 5,
+    });
     const payload = buildPlanReviewPayload({
       entryQuotes: [entry],
       state,
@@ -154,7 +167,13 @@ describe("planReview payload", () => {
   it("includes expiry when the market has endTs/closeTime", () => {
     const state = emptyAlphaState(100);
     ensurePositionByAppId(state, { marketAppId: APP_ID, marketId: "m1", title: "Test market" });
-    const entry = quote({ side: "bid", outcome: "YES", source: "reward", price: 0.4, sizeShares: 5 });
+    const entry = quote({
+      side: "bid",
+      outcome: "YES",
+      source: "reward",
+      price: 0.4,
+      sizeShares: 5,
+    });
     const payload = buildPlanReviewPayload({
       entryQuotes: [entry],
       state,
@@ -187,7 +206,13 @@ describe("planReview schema", () => {
 describe("planReview apply", () => {
   it("keeps exits and drops entries on missing response (fail closed)", () => {
     const entry = quote({ side: "bid", outcome: "YES", source: "reward" });
-    const exit = quote({ side: "ask", outcome: "YES", source: "inventory_exit", price: 0.5, sizeShares: 2 });
+    const exit = quote({
+      side: "ask",
+      outcome: "YES",
+      source: "inventory_exit",
+      price: 0.5,
+      sizeShares: 2,
+    });
     const applied = applyPlanReviewDecisions({
       placementQueue: [exit, entry],
       entryQuotes: [entry],
@@ -228,7 +253,13 @@ describe("planReview apply", () => {
   });
 
   it("shrinks notional when requested", () => {
-    const entry = quote({ side: "bid", outcome: "YES", source: "reward", price: 0.5, sizeShares: 20 });
+    const entry = quote({
+      side: "bid",
+      outcome: "YES",
+      source: "reward",
+      price: 0.5,
+      sizeShares: 20,
+    });
     const id = entryReviewId(entry, 0);
     const applied = applyPlanReviewDecisions({
       placementQueue: [entry],
@@ -336,7 +367,13 @@ describe("planReview runPlanReview", () => {
 
   it("fail-closes entries on malformed JSON after repair", async () => {
     const entry = quote({ side: "bid", outcome: "YES", source: "reward" });
-    const exit = quote({ side: "ask", outcome: "NO", source: "inventory_exit", price: 0.6, sizeShares: 3 });
+    const exit = quote({
+      side: "ask",
+      outcome: "NO",
+      source: "inventory_exit",
+      price: 0.6,
+      sizeShares: 3,
+    });
     let calls = 0;
     const client: ResponsesClient = {
       responses: {
@@ -414,7 +451,8 @@ describe("planReview runPlanReview", () => {
       responses: {
         async create(request) {
           const body = request as { instructions?: string };
-          capturedInstructions = typeof body.instructions === "string" ? body.instructions : undefined;
+          capturedInstructions =
+            typeof body.instructions === "string" ? body.instructions : undefined;
           return {
             data: messageResponse(
               JSON.stringify({

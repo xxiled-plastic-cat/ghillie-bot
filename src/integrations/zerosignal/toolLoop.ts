@@ -4,11 +4,11 @@ import {
   buildReplayInput,
   createAgentResponse,
   extractFunctionCalls,
-  normalizeAgentResponse,
-  recordInferenceCharge,
   type FunctionCallItem,
   type NormalizedAgentResponse,
+  normalizeAgentResponse,
   type ResponsesClient,
+  recordInferenceCharge,
 } from "./responses.js";
 
 export type ToolLoopFunctionOutput = {
@@ -55,9 +55,7 @@ export async function runResponsesToolLoop(
     store: false,
     tools: options.tools,
     tool_choice: options.toolChoice ?? "auto",
-    ...(options.reasoningEffort
-      ? { reasoning: { effort: options.reasoningEffort } }
-      : {}),
+    ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
   });
   recordInferenceCharge(inferenceCharges, first.headers);
   let response = normalizeAgentResponse(first.data);
@@ -83,9 +81,7 @@ export async function runResponsesToolLoop(
       store: false,
       tools: options.tools,
       tool_choice: options.toolChoice ?? "auto",
-      ...(options.reasoningEffort
-        ? { reasoning: { effort: options.reasoningEffort } }
-        : {}),
+      ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
     });
     recordInferenceCharge(inferenceCharges, next.headers);
     response = normalizeAgentResponse(next.data);

@@ -1,6 +1,11 @@
 import type { PolyConfig } from "./polyConfig.js";
+import type {
+  PolyPaperModel,
+  PolyPaperModelState,
+  PolyPaperOrder,
+  PolyPaperQuote,
+} from "./polyPaperTypes.js";
 import type { PolyScanResult } from "./polyTypes.js";
-import type { PolyPaperModel, PolyPaperModelState, PolyPaperOrder, PolyPaperQuote } from "./polyPaperTypes.js";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -59,11 +64,17 @@ function ageSeconds(order: PolyPaperOrder): number {
   return Math.max(0, (Date.now() - Date.parse(order.createdAt)) / 1000);
 }
 
-function updateQuoteDistance(order: PolyPaperOrder, scan: PolyScanResult, state: PolyPaperModelState): void {
+function updateQuoteDistance(
+  order: PolyPaperOrder,
+  scan: PolyScanResult,
+  state: PolyPaperModelState,
+): void {
   const sameSide = bestSameSidePrice(order, scan);
   if (sameSide === undefined || sameSide <= 0) return;
   const distance =
-    order.side === "bid" ? Math.max(0, (sameSide - order.price) / sameSide) * 10_000 : Math.max(0, (order.price - sameSide) / sameSide) * 10_000;
+    order.side === "bid"
+      ? Math.max(0, (sameSide - order.price) / sameSide) * 10_000
+      : Math.max(0, (order.price - sameSide) / sameSide) * 10_000;
   order.quoteDistanceBpsSum += distance;
   order.quoteDistanceSamples += 1;
   state.metrics.quoteDistanceBpsSum += distance;
@@ -85,7 +96,12 @@ function ensurePosition(state: PolyPaperModelState, order: PolyPaperOrder) {
   return state.positionsByTokenId[order.tokenId];
 }
 
-function applyBidFill(state: PolyPaperModelState, order: PolyPaperOrder, fillSize: number, fillPrice: number): void {
+function applyBidFill(
+  state: PolyPaperModelState,
+  order: PolyPaperOrder,
+  fillSize: number,
+  fillPrice: number,
+): void {
   const position = ensurePosition(state, order);
   const totalCost = position.size * position.avgCost + fillSize * fillPrice;
   position.size += fillSize;
@@ -93,7 +109,12 @@ function applyBidFill(state: PolyPaperModelState, order: PolyPaperOrder, fillSiz
   state.cash -= fillSize * fillPrice;
 }
 
-function applyAskFill(state: PolyPaperModelState, order: PolyPaperOrder, fillSize: number, fillPrice: number): void {
+function applyAskFill(
+  state: PolyPaperModelState,
+  order: PolyPaperOrder,
+  fillSize: number,
+  fillPrice: number,
+): void {
   const position = ensurePosition(state, order);
   const realised = (fillPrice - position.avgCost) * fillSize;
   position.size = Math.max(0, position.size - fillSize);
@@ -102,7 +123,12 @@ function applyAskFill(state: PolyPaperModelState, order: PolyPaperOrder, fillSiz
   state.cash += fillSize * fillPrice;
 }
 
-function fillOrder(state: PolyPaperModelState, order: PolyPaperOrder, fillSize: number, fillPrice: number): void {
+function fillOrder(
+  state: PolyPaperModelState,
+  order: PolyPaperOrder,
+  fillSize: number,
+  fillPrice: number,
+): void {
   if (fillSize <= 0) return;
   const appliedSize = Math.min(order.remainingSize, fillSize);
   if (appliedSize <= 0) return;
@@ -128,7 +154,10 @@ function balancedFillSize(order: PolyPaperOrder, scan: PolyScanResult, config: P
   const age = ageSeconds(order);
   const ttl = Math.max(config.paperOrderTtlSeconds, 1);
   const ageRatio = Math.min(1, age / ttl);
-  const probability = Math.min(1, Math.max(0, config.paperBalancedBaseFillProb + config.paperBalancedAgeWeight * ageRatio));
+  const probability = Math.min(
+    1,
+    Math.max(0, config.paperBalancedBaseFillProb + config.paperBalancedAgeWeight * ageRatio),
+  );
   const sameSide = bestSameSidePrice(order, scan);
   const competitiveness =
     sameSide !== undefined && sameSide > 0
@@ -137,7 +166,8 @@ function balancedFillSize(order: PolyPaperOrder, scan: PolyScanResult, config: P
         : Math.max(0, 1 - (order.price - sameSide) / sameSide)
       : 0.2;
   if (Math.random() > probability * competitiveness) return 0;
-  const depthCap = depth > 0 ? Math.max(0.1, Math.min(1, depth / Math.max(order.remainingSize, 0.000001))) : 0.25;
+  const depthCap =
+    depth > 0 ? Math.max(0.1, Math.min(1, depth / Math.max(order.remainingSize, 0.000001))) : 0.25;
   const randomFill = 0.2 + Math.random() * 0.8;
   return order.remainingSize * Math.min(1, depthCap * randomFill);
 }

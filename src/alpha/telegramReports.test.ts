@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, mock } from "node:test";
 
 import { emptyAlphaState } from "./alphaStateStore.js";
-import {
-  escapeHtml,
-  escapeRichMarkdown,
-  notifyTelegramReport,
-} from "./telegramNotifier.js";
+import { escapeHtml, escapeRichMarkdown, notifyTelegramReport } from "./telegramNotifier.js";
 import {
   extractInferenceCostLine,
   formatDailySummaryReport,

@@ -47,7 +47,10 @@ function normalizeStrike(value: number): number {
   return value / 100;
 }
 
-function toMarketRows(summary: MarketSummary, rows: Awaited<ReturnType<typeof client.getLadder>>): Market[] {
+function toMarketRows(
+  summary: MarketSummary,
+  rows: Awaited<ReturnType<typeof client.getLadder>>,
+): Market[] {
   return rows.map((row) => ({
     id: `${summary.market_id}:${row.strike_index}`,
     marketGroupId: String(summary.market_id),
@@ -86,10 +89,22 @@ export async function getOrderbook(marketId: string): Promise<Orderbook> {
       return {
         strikeIndex: row.strike_index,
         strike: normalizeStrike(row.strike),
-        yesBuys: book.yes_buys.map((x) => ({ price: normalizePrice(x.price) ?? 0, quantity: x.quantity })),
-        yesSells: book.yes_sells.map((x) => ({ price: normalizePrice(x.price) ?? 0, quantity: x.quantity })),
-        noBuys: book.no_buys.map((x) => ({ price: normalizePrice(x.price) ?? 0, quantity: x.quantity })),
-        noSells: book.no_sells.map((x) => ({ price: normalizePrice(x.price) ?? 0, quantity: x.quantity })),
+        yesBuys: book.yes_buys.map((x) => ({
+          price: normalizePrice(x.price) ?? 0,
+          quantity: x.quantity,
+        })),
+        yesSells: book.yes_sells.map((x) => ({
+          price: normalizePrice(x.price) ?? 0,
+          quantity: x.quantity,
+        })),
+        noBuys: book.no_buys.map((x) => ({
+          price: normalizePrice(x.price) ?? 0,
+          quantity: x.quantity,
+        })),
+        noSells: book.no_sells.map((x) => ({
+          price: normalizePrice(x.price) ?? 0,
+          quantity: x.quantity,
+        })),
       };
     }),
   );

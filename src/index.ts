@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
-
-import { readExecutionConfig, validateExecutionConfig } from "./services/executionConfig.js";
+import type { ExecTickResult } from "./services/execRunner.js";
 import { runExecutionTick } from "./services/execRunner.js";
+import { readExecutionConfig, validateExecutionConfig } from "./services/executionConfig.js";
 import { scanLadderInversions } from "./services/ladderScanner.js";
 import { loadScanInputs } from "./services/marketScanner.js";
 import { scanParity } from "./services/parityScanner.js";
@@ -16,7 +16,6 @@ import {
   padRight,
 } from "./utils/format.js";
 import { getHaltWindowMinutes, minutesUntil, TAKER_MATCH_FEE_BPS } from "./utils/math.js";
-import type { ExecTickResult } from "./services/execRunner.js";
 
 dotenv.config();
 
@@ -85,7 +84,9 @@ function printLadder(ladder: Ladder): void {
         ? (market.yesBid + market.yesAsk) / 2
         : undefined;
     const spread =
-      market.yesBid !== undefined && market.yesAsk !== undefined ? market.yesAsk - market.yesBid : undefined;
+      market.yesBid !== undefined && market.yesAsk !== undefined
+        ? market.yesAsk - market.yesBid
+        : undefined;
     console.log(
       `${padRight(market.strike.toFixed(0), 12)}${padRight(formatPrice(market.yesBid), 10)}${padRight(
         formatPrice(market.yesAsk),
@@ -94,19 +95,6 @@ function printLadder(ladder: Ladder): void {
     );
   }
   console.log("");
-}
-
-async function runScanOnce(config: EnvConfig, printVerbose: boolean): Promise<{
-  marketsCount: number;
-  openCount: number;
-  laddersCount: number;
-  averageLadderTwoSidedRatio: number;
-  ladderOpportunities: ReturnType<typeof scanLadderInversions>;
-  parityOpportunities: ReturnType<typeof scanParity>;
-  makerCandidates: ReturnType<typeof rankMakerCandidates>;
-  liquiditySignals: ReturnType<typeof rankLiquiditySignals>;
-}> {
-  return runScanOnceWithOptions(config, {}, printVerbose);
 }
 
 function filterByUnderlying(markets: Market[], underlying?: string): Market[] {
@@ -121,7 +109,10 @@ function filterLaddersByUnderlying(ladders: Ladder[], underlying?: string): Ladd
 
 function getAverageLadderTwoSidedRatio(ladders: Ladder[]): number {
   if (ladders.length === 0) return 0;
-  const total = ladders.reduce((acc, ladder) => acc + countTwoSidedQuotes(ladder) / ladder.markets.length, 0);
+  const total = ladders.reduce(
+    (acc, ladder) => acc + countTwoSidedQuotes(ladder) / ladder.markets.length,
+    0,
+  );
   return total / ladders.length;
 }
 
@@ -280,8 +271,11 @@ async function runWatchCommand(options: CliOptions): Promise<void> {
     try {
       const result = await runScanOnceWithOptions(config, options, false);
       const top = result.liquiditySignals[0];
-      const totalOpportunities = result.ladderOpportunities.length + result.parityOpportunities.length;
-      const filterSuffix = options.underlying ? ` underlying=${options.underlying.toUpperCase()}` : "";
+      const totalOpportunities =
+        result.ladderOpportunities.length + result.parityOpportunities.length;
+      const filterSuffix = options.underlying
+        ? ` underlying=${options.underlying.toUpperCase()}`
+        : "";
       if (top) {
         console.log(
           `[${timestamp}] markets=${result.openCount} ladders=${result.laddersCount} opportunities=${totalOpportunities} makerCandidates=${result.makerCandidates.length} liquiditySignals=${result.liquiditySignals.length} twoSided=${(
@@ -317,9 +311,9 @@ function printExecutionResult(result: ExecTickResult): void {
   console.log(`Reason: ${result.execution.reason}`);
   if (top) {
     console.log(
-      `Top target: ${top.underlying} ${formatTimeframe(top.timeframe)} strike=${(top.strikeCents / 100).toFixed(
-        0,
-      )} market=${top.marketId}:${top.strikeIndex}`,
+      `Top target: ${top.underlying} ${formatTimeframe(top.timeframe)} strike=${(
+        top.strikeCents / 100
+      ).toFixed(0)} market=${top.marketId}:${top.strikeIndex}`,
     );
     console.log(
       `Quotes: YES BUY ${top.yesBuyPriceCents}c x ${top.quantity}, NO BUY ${top.noBuyPriceCents}c x ${top.quantity}`,
@@ -376,7 +370,9 @@ async function runWatchExecCommand(options: CliOptions): Promise<void> {
 }
 
 function printUsage(): void {
-  console.log("Usage: tsx src/index.ts <scan|watch|tick-exec|watch-exec> [--underlying BTC|ETH|XAU|SPY]");
+  console.log(
+    "Usage: tsx src/index.ts <scan|watch|tick-exec|watch-exec> [--underlying BTC|ETH|XAU|SPY]",
+  );
   console.log(`Taker match fee assumption: ${TAKER_MATCH_FEE_BPS.toFixed(1)} bps`);
 }
 

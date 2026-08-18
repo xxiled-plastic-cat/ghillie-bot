@@ -12,7 +12,12 @@ function groupOrdersByMarket(orders: AlphaPaperOrder[]): Map<number, AlphaPaperO
   return byMarket;
 }
 
-export function accrueEstimatedRewards(state: AlphaBotState, config: AlphaConfig, now = Date.now(), rewardContext: RewardRateContext = {}): void {
+export function accrueEstimatedRewards(
+  state: AlphaBotState,
+  config: AlphaConfig,
+  now = Date.now(),
+  rewardContext: RewardRateContext = {},
+): void {
   const last = Date.parse(state.lastUpdated);
   const elapsedSeconds = Number.isFinite(last) ? Math.max(0, (now - last) / 1000) : 0;
   if (elapsedSeconds <= 0) return;
@@ -34,7 +39,8 @@ export function accrueEstimatedRewards(state: AlphaBotState, config: AlphaConfig
     const estimate = rewardRate.dailyUsd * (elapsedSeconds / 86_400);
     const marketRewardKey = String(marketAppId);
     state.estimatedRewardsUsd += estimate;
-    state.estimatedRewardsByMarket[marketRewardKey] = (state.estimatedRewardsByMarket[marketRewardKey] ?? 0) + estimate;
+    state.estimatedRewardsByMarket[marketRewardKey] =
+      (state.estimatedRewardsByMarket[marketRewardKey] ?? 0) + estimate;
     state.rewardEligibleSeconds += elapsedSeconds;
   }
 }

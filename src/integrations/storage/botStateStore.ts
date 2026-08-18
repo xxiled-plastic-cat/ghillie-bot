@@ -30,10 +30,7 @@ export interface BotStateStore {
 
 export function isSpacesConfigured(config: BotStateStoreConfig): boolean {
   return Boolean(
-    config.spacesEndpoint &&
-      config.spacesBucket &&
-      config.spacesKey &&
-      config.spacesSecret,
+    config.spacesEndpoint && config.spacesBucket && config.spacesKey && config.spacesSecret,
   );
 }
 
@@ -61,7 +58,9 @@ export function readBotStateStoreConfigFromEnv(
   };
 }
 
-export function createBotStateStore(config: BotStateStoreConfig = readBotStateStoreConfigFromEnv()): BotStateStore {
+export function createBotStateStore(
+  config: BotStateStoreConfig = readBotStateStoreConfigFromEnv(),
+): BotStateStore {
   if (isSpacesConfigured(config)) {
     return new SpacesBotStateStore({
       endpoint: config.spacesEndpoint!,

@@ -1,8 +1,20 @@
-import { AlphaClient, type Market, type MarketOption, type OpenOrder, type WalletPosition } from "@alpha-arcade/sdk";
+import {
+  AlphaClient,
+  type Market,
+  type MarketOption,
+  type OpenOrder,
+  type WalletPosition,
+} from "@alpha-arcade/sdk";
 import algosdk from "algosdk";
 
 import type { AlphaConfig } from "./alphaConfig.js";
-import { POOL_FALLBACK_DAILY_REWARD_SOURCE, type AlphaBookLevel, type AlphaMarket, type AlphaOrderbook, type AlphaRewardInfo } from "./alphaTypes.js";
+import {
+  type AlphaBookLevel,
+  type AlphaMarket,
+  type AlphaOrderbook,
+  type AlphaRewardInfo,
+  POOL_FALLBACK_DAILY_REWARD_SOURCE,
+} from "./alphaTypes.js";
 
 const MICRO = 1_000_000;
 const ALPHA_API_HOST = "alphaarcade.com";
@@ -17,9 +29,21 @@ type AlphaRuntimeClient = AlphaClient & {
     quantity: number;
     isBuying: boolean;
     slippage: number;
-  }) => Promise<{ escrowAppId?: number; txIds?: string[]; confirmedRound?: number; matchedQuantity?: number; actualFillPrice?: number }>;
-  mergeShares?: (input: { marketAppId: number; amount: number }) => Promise<{ txIds?: string[]; confirmedRound?: number }>;
-  splitShares?: (input: { marketAppId: number; amount: number }) => Promise<{ txIds?: string[]; confirmedRound?: number }>;
+  }) => Promise<{
+    escrowAppId?: number;
+    txIds?: string[];
+    confirmedRound?: number;
+    matchedQuantity?: number;
+    actualFillPrice?: number;
+  }>;
+  mergeShares?: (input: {
+    marketAppId: number;
+    amount: number;
+  }) => Promise<{ txIds?: string[]; confirmedRound?: number }>;
+  splitShares?: (input: {
+    marketAppId: number;
+    amount: number;
+  }) => Promise<{ txIds?: string[]; confirmedRound?: number }>;
   claim?: (input: { marketAppId: number; assetId: number; amount?: number }) => Promise<{
     success?: boolean;
     txIds?: string[];
@@ -85,9 +109,13 @@ function inferCompetition(market: Market | MarketOption): AlphaRewardInfo["compe
 
 function hasPositiveRewardSignal(market: Market | MarketOption): boolean {
   const looseMarket = market as (Market | MarketOption) & Record<string, unknown>;
-  return [market.totalRewards, market.rewardsPaidOut, looseMarket.dailyRewards, looseMarket.dailyReward, looseMarket.rewardPerDay].some(
-    (value) => typeof value === "number" && Number.isFinite(value) && value > 0,
-  );
+  return [
+    market.totalRewards,
+    market.rewardsPaidOut,
+    looseMarket.dailyRewards,
+    looseMarket.dailyReward,
+    looseMarket.rewardPerDay,
+  ].some((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
 }
 
 /**
@@ -97,7 +125,10 @@ function hasPositiveRewardSignal(market: Market | MarketOption): boolean {
  * the reward rate. We still allow that as a last resort but tag the source so
  * the overstatement is visible, and it can be calibrated out downstream.
  */
-function resolveDailyReward(looseMarket: Record<string, unknown>): { usd?: number; source: string } {
+function resolveDailyReward(looseMarket: Record<string, unknown>): {
+  usd?: number;
+  source: string;
+} {
   const dailyCandidates: Array<[string, unknown]> = [
     ["dailyRewards", looseMarket.dailyRewards],
     ["dailyReward", looseMarket.dailyReward],
@@ -108,12 +139,16 @@ function resolveDailyReward(looseMarket: Record<string, unknown>): { usd?: numbe
     if (usd !== undefined && usd > 0) return { usd, source };
   }
   const poolUsd = normalizeUsd(looseMarket.totalRewards);
-  if (poolUsd !== undefined && poolUsd > 0) return { usd: poolUsd, source: POOL_FALLBACK_DAILY_REWARD_SOURCE };
+  if (poolUsd !== undefined && poolUsd > 0)
+    return { usd: poolUsd, source: POOL_FALLBACK_DAILY_REWARD_SOURCE };
   return { source: "none" };
 }
 
 function toRewardInfo(market: Market | MarketOption, fallback?: Market): AlphaRewardInfo {
-  const rewardSource = !hasPositiveRewardSignal(market) && fallback && hasPositiveRewardSignal(fallback) ? fallback : market;
+  const rewardSource =
+    !hasPositiveRewardSignal(market) && fallback && hasPositiveRewardSignal(fallback)
+      ? fallback
+      : market;
   const looseMarket = rewardSource as (Market | MarketOption) & Record<string, unknown>;
   const totalRewardsUsd = normalizeUsd(rewardSource.totalRewards);
   const rewardsPaidOutUsd = normalizeUsd(rewardSource.rewardsPaidOut);
@@ -142,7 +177,11 @@ function toMarketStatus(market: Market): string {
   return "live";
 }
 
-function emptyOrderbook(market: AlphaMarket, source: AlphaOrderbook["source"], raw: unknown): AlphaOrderbook {
+function emptyOrderbook(
+  market: AlphaMarket,
+  source: AlphaOrderbook["source"],
+  raw: unknown,
+): AlphaOrderbook {
   return {
     marketId: market.id,
     marketAppId: market.marketAppId,
@@ -217,7 +256,9 @@ function bestAsk(levels: AlphaBookLevel[]): number | undefined {
   return levels.length > 0 ? Math.min(...levels.map((level) => level.price)) : undefined;
 }
 
-function normalizeLevels(entries: Array<{ price: number; quantity: number; escrowAppId?: number; owner?: string }>): AlphaBookLevel[] {
+function normalizeLevels(
+  entries: Array<{ price: number; quantity: number; escrowAppId?: number; owner?: string }>,
+): AlphaBookLevel[] {
   return entries
     .map((entry) => ({
       price: fromMicroUnits(entry.price) ?? 0,
@@ -251,7 +292,8 @@ function installAlphaApiDiagnostics(): void {
   const originalFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
-    const method = init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET");
+    const method =
+      init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET");
     const isAlphaApi = looksLikeAlphaApiUrl(url);
 
     try {
@@ -260,7 +302,9 @@ function installAlphaApiDiagnostics(): void {
         let bodyPreview = "";
         try {
           const responseBody = await response.clone().text();
-          bodyPreview = responseBody ? truncateText(responseBody, MAX_ERROR_BODY_LOG_CHARS) : "<empty body>";
+          bodyPreview = responseBody
+            ? truncateText(responseBody, MAX_ERROR_BODY_LOG_CHARS)
+            : "<empty body>";
         } catch {
           bodyPreview = "<failed to read response body>";
         }
@@ -287,7 +331,9 @@ export class AlphaSdkClient {
   constructor(config: AlphaConfig, liveSigner: boolean) {
     installAlphaApiDiagnostics();
     const account =
-      liveSigner && config.walletMnemonic ? algosdk.mnemonicToSecretKey(config.walletMnemonic) : algosdk.generateAccount();
+      liveSigner && config.walletMnemonic
+        ? algosdk.mnemonicToSecretKey(config.walletMnemonic)
+        : algosdk.generateAccount();
     this.algodClient = new algosdk.Algodv2(config.algodToken ?? "", config.algodServer, "");
     this.usdcAssetId = config.usdcAssetId;
     this.client = new AlphaClient({
@@ -295,7 +341,8 @@ export class AlphaSdkClient {
       algodClient: this.algodClient,
       indexerClient: new algosdk.Indexer(config.algodToken ?? "", config.indexerServer, ""),
       signer: algosdk.makeBasicAccountTransactionSigner(account),
-      activeAddress: liveSigner && config.walletAddress ? config.walletAddress : account.addr.toString(),
+      activeAddress:
+        liveSigner && config.walletAddress ? config.walletAddress : account.addr.toString(),
       matcherAppId: config.matcherAppId,
       usdcAssetId: config.usdcAssetId,
     });
@@ -321,7 +368,12 @@ export class AlphaSdkClient {
 
   async getMarket(marketIdOrSlug: string): Promise<AlphaMarket | undefined> {
     const markets = await this.getLiveMarkets();
-    return markets.find((market) => market.id === marketIdOrSlug || market.slug === marketIdOrSlug || String(market.marketAppId) === marketIdOrSlug);
+    return markets.find(
+      (market) =>
+        market.id === marketIdOrSlug ||
+        market.slug === marketIdOrSlug ||
+        String(market.marketAppId) === marketIdOrSlug,
+    );
   }
 
   async getMarketResolution(marketAppId: number): Promise<MarketChainStatus> {
@@ -354,7 +406,10 @@ export class AlphaSdkClient {
     try {
       const chainStatus = await this.getMarketChainStatus(market.marketAppId);
       if (chainStatus.isResolved || chainStatus.isActivated === false) {
-        return emptyOrderbook(market, "unavailable", { reason: "market is not live on-chain", chainStatus });
+        return emptyOrderbook(market, "unavailable", {
+          reason: "market is not live on-chain",
+          chainStatus,
+        });
       }
       const book = await this.client.getOrderbook(market.marketAppId);
       const yesBids = normalizeLevels(book.yes.bids);
@@ -376,7 +431,8 @@ export class AlphaSdkClient {
         yesAsk,
         noBid,
         noAsk,
-        yesMid: yesBid !== undefined && yesAsk !== undefined ? (yesBid + yesAsk) / 2 : market.yesPrice,
+        yesMid:
+          yesBid !== undefined && yesAsk !== undefined ? (yesBid + yesAsk) / 2 : market.yesPrice,
         noMid: noBid !== undefined && noAsk !== undefined ? (noBid + noAsk) / 2 : market.noPrice,
         yesSpread,
         noSpread,
@@ -402,18 +458,23 @@ export class AlphaSdkClient {
     try {
       return this.client.getWalletOrdersFromApi(walletAddress);
     } catch (error) {
-      throw new Error(`Failed to fetch wallet open orders from Alpha API for ${walletAddress}: ${shortError(error)}`);
+      throw new Error(
+        `Failed to fetch wallet open orders from Alpha API for ${walletAddress}: ${shortError(error)}`,
+      );
     }
   }
 
   async getUsdcBalance(walletAddress: string): Promise<number | undefined> {
     try {
-      const result = (await this.algodClient.accountAssetInformation(walletAddress, this.usdcAssetId).do()) as {
+      const result = (await this.algodClient
+        .accountAssetInformation(walletAddress, this.usdcAssetId)
+        .do()) as {
         assetHolding?: { amount?: number | bigint };
         assetHoldingInfo?: { amount?: number | bigint };
         amount?: number | bigint;
       };
-      const amount = result.assetHolding?.amount ?? result.assetHoldingInfo?.amount ?? result.amount;
+      const amount =
+        result.assetHolding?.amount ?? result.assetHoldingInfo?.amount ?? result.amount;
       if (amount === undefined) return 0;
       return Number(amount) / MICRO;
     } catch (error) {
@@ -460,9 +521,16 @@ export class AlphaSdkClient {
     sizeShares: number;
     isBuying: boolean;
     slippage: number;
-  }): Promise<{ escrowAppId?: number; txIds: string[]; confirmedRound?: number; matchedQuantity?: number; actualFillPrice?: number }> {
+  }): Promise<{
+    escrowAppId?: number;
+    txIds: string[];
+    confirmedRound?: number;
+    matchedQuantity?: number;
+    actualFillPrice?: number;
+  }> {
     const runtimeClient = this.client as AlphaRuntimeClient;
-    if (!runtimeClient.createMarketOrder) throw new Error("Alpha SDK does not expose createMarketOrder");
+    if (!runtimeClient.createMarketOrder)
+      throw new Error("Alpha SDK does not expose createMarketOrder");
     const result = await runtimeClient.createMarketOrder({
       marketAppId: input.marketAppId,
       position: input.outcome === "YES" ? 1 : 0,
@@ -471,7 +539,10 @@ export class AlphaSdkClient {
       isBuying: input.isBuying,
       slippage: toMicroUnits(input.slippage),
     });
-    const looseResult = result as typeof result & { matchedQuantity?: number; actualFillPrice?: number };
+    const looseResult = result as typeof result & {
+      matchedQuantity?: number;
+      actualFillPrice?: number;
+    };
     return {
       ...looseResult,
       txIds: looseResult.txIds ?? [],
@@ -480,7 +551,10 @@ export class AlphaSdkClient {
     };
   }
 
-  async mergeShares(input: { marketAppId: number; amountShares: number }): Promise<{ txIds: string[]; confirmedRound?: number }> {
+  async mergeShares(input: {
+    marketAppId: number;
+    amountShares: number;
+  }): Promise<{ txIds: string[]; confirmedRound?: number }> {
     const runtimeClient = this.client as AlphaRuntimeClient;
     if (!runtimeClient.mergeShares) throw new Error("Alpha SDK does not expose mergeShares");
     const result = await runtimeClient.mergeShares({
@@ -490,7 +564,10 @@ export class AlphaSdkClient {
     return { ...result, txIds: result.txIds ?? [] };
   }
 
-  async splitShares(input: { marketAppId: number; amountUsd: number }): Promise<{ txIds: string[]; confirmedRound?: number }> {
+  async splitShares(input: {
+    marketAppId: number;
+    amountUsd: number;
+  }): Promise<{ txIds: string[]; confirmedRound?: number }> {
     const runtimeClient = this.client as AlphaRuntimeClient;
     if (!runtimeClient.splitShares) throw new Error("Alpha SDK does not expose splitShares");
     const result = await runtimeClient.splitShares({
@@ -500,11 +577,12 @@ export class AlphaSdkClient {
     return { ...result, txIds: result.txIds ?? [] };
   }
 
-  async claim(input: {
-    marketAppId: number;
-    assetId: number;
-    amountShares?: number;
-  }): Promise<{ success: boolean; txIds: string[]; confirmedRound?: number; amountClaimedShares?: number }> {
+  async claim(input: { marketAppId: number; assetId: number; amountShares?: number }): Promise<{
+    success: boolean;
+    txIds: string[];
+    confirmedRound?: number;
+    amountClaimedShares?: number;
+  }> {
     const runtimeClient = this.client as AlphaRuntimeClient;
     if (!runtimeClient.claim) throw new Error("Alpha SDK does not expose claim");
     const result = await runtimeClient.claim({
@@ -520,7 +598,11 @@ export class AlphaSdkClient {
     };
   }
 
-  async cancelOrder(input: { marketAppId: number; escrowAppId: number; orderOwner: string }): Promise<{ success: boolean }> {
+  async cancelOrder(input: {
+    marketAppId: number;
+    escrowAppId: number;
+    orderOwner: string;
+  }): Promise<{ success: boolean }> {
     return this.client.cancelOrder(input);
   }
 }

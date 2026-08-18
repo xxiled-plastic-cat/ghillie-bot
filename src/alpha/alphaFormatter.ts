@@ -1,8 +1,18 @@
-import type { AlphaConfig } from "./alphaConfig.js";
-import type { AlphaBotState, AlphaMarket, AlphaOpportunity, AlphaOrderbook, AlphaParityPlan } from "./alphaTypes.js";
 import { buildAccountancySnapshot, formatAccountancyDigestLines } from "./accountancyLedgers.js";
-import { summarizeBooks, type AlphaScanResult } from "./alphaMarketScanner.js";
-import { estimateRewardRateForOrders, reliableDailyRewardUsd, type RewardRateContext } from "./rewardRateEstimator.js";
+import type { AlphaConfig } from "./alphaConfig.js";
+import { type AlphaScanResult, summarizeBooks } from "./alphaMarketScanner.js";
+import type {
+  AlphaBotState,
+  AlphaMarket,
+  AlphaOpportunity,
+  AlphaOrderbook,
+  AlphaParityPlan,
+} from "./alphaTypes.js";
+import {
+  estimateRewardRateForOrders,
+  type RewardRateContext,
+  reliableDailyRewardUsd,
+} from "./rewardRateEstimator.js";
 
 export function fmtUsd(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return "unknown";
@@ -27,19 +37,41 @@ export function fmtPrice(value: number | undefined): string {
 }
 
 export function fmtCents(value: number | undefined): string {
-  return value === undefined || !Number.isFinite(value) ? "unknown" : `${(value * 100).toFixed(2)}c`;
+  return value === undefined || !Number.isFinite(value)
+    ? "unknown"
+    : `${(value * 100).toFixed(2)}c`;
 }
 
-function spreadRows(
-  scan: AlphaScanResult,
-): Array<{ marketAppId: number; title: string; outcome: "YES" | "NO"; bid: number; ask: number; spread: number; midpoint: number }> {
-  const marketByAppId = new Map([...scan.markets, ...scan.rewardMarkets].map((market) => [market.marketAppId, market]));
-  const rows: Array<{ marketAppId: number; title: string; outcome: "YES" | "NO"; bid: number; ask: number; spread: number; midpoint: number }> =
-    [];
+function spreadRows(scan: AlphaScanResult): Array<{
+  marketAppId: number;
+  title: string;
+  outcome: "YES" | "NO";
+  bid: number;
+  ask: number;
+  spread: number;
+  midpoint: number;
+}> {
+  const marketByAppId = new Map(
+    [...scan.markets, ...scan.rewardMarkets].map((market) => [market.marketAppId, market]),
+  );
+  const rows: Array<{
+    marketAppId: number;
+    title: string;
+    outcome: "YES" | "NO";
+    bid: number;
+    ask: number;
+    spread: number;
+    midpoint: number;
+  }> = [];
   for (const book of scan.orderbooks.values()) {
     const market = marketByAppId.get(book.marketAppId);
     if (!market) continue;
-    if (book.yesBid !== undefined && book.yesAsk !== undefined && book.yesMid !== undefined && book.yesSpread !== undefined) {
+    if (
+      book.yesBid !== undefined &&
+      book.yesAsk !== undefined &&
+      book.yesMid !== undefined &&
+      book.yesSpread !== undefined
+    ) {
       rows.push({
         marketAppId: market.marketAppId,
         title: market.title,
@@ -50,7 +82,12 @@ function spreadRows(
         midpoint: book.yesMid,
       });
     }
-    if (book.noBid !== undefined && book.noAsk !== undefined && book.noMid !== undefined && book.noSpread !== undefined) {
+    if (
+      book.noBid !== undefined &&
+      book.noAsk !== undefined &&
+      book.noMid !== undefined &&
+      book.noSpread !== undefined
+    ) {
       rows.push({
         marketAppId: market.marketAppId,
         title: market.title,
@@ -99,11 +136,27 @@ function bestSpreadMatch(
   config: AlphaConfig,
 ): { label: string; reason: string } {
   if (!config.enableSpreadCapture) return { label: "off", reason: "disabled" };
-  if (!book || book.source === "unavailable") return { label: "no", reason: "book unavailable/not scanned" };
-  if ((market.volume ?? 0) < config.minSpreadVolumeUsd) return { label: "no", reason: `volume < $${config.minSpreadVolumeUsd.toFixed(2)}` };
+  if (!book || book.source === "unavailable")
+    return { label: "no", reason: "book unavailable/not scanned" };
+  if ((market.volume ?? 0) < config.minSpreadVolumeUsd)
+    return { label: "no", reason: `volume < $${config.minSpreadVolumeUsd.toFixed(2)}` };
   const candidates = [
-    { outcome: "YES", bid: book.yesBid, ask: book.yesAsk, mid: book.yesMid, spread: book.yesSpread, depthUsd: outcomeDepthUsd(book, "YES") },
-    { outcome: "NO", bid: book.noBid, ask: book.noAsk, mid: book.noMid, spread: book.noSpread, depthUsd: outcomeDepthUsd(book, "NO") },
+    {
+      outcome: "YES",
+      bid: book.yesBid,
+      ask: book.yesAsk,
+      mid: book.yesMid,
+      spread: book.yesSpread,
+      depthUsd: outcomeDepthUsd(book, "YES"),
+    },
+    {
+      outcome: "NO",
+      bid: book.noBid,
+      ask: book.noAsk,
+      mid: book.noMid,
+      spread: book.noSpread,
+      depthUsd: outcomeDepthUsd(book, "NO"),
+    },
   ] as const;
   const matches = candidates
     .filter(
@@ -119,12 +172,24 @@ function bestSpreadMatch(
     )
     .sort((a, b) => (b.spread ?? 0) - (a.spread ?? 0));
   const best = matches[0];
-  if (best) return { label: "watch", reason: `${best.outcome} ${fmtCents(best.spread)} @ mid ${fmtPrice(best.mid)}, depth $${best.depthUsd.toFixed(2)}; needs ${config.spreadPersistenceScans} live scans` };
-  const twoSided = candidates.find((candidate) => candidate.bid !== undefined && candidate.ask !== undefined && candidate.mid !== undefined);
+  if (best)
+    return {
+      label: "watch",
+      reason: `${best.outcome} ${fmtCents(best.spread)} @ mid ${fmtPrice(best.mid)}, depth $${best.depthUsd.toFixed(2)}; needs ${config.spreadPersistenceScans} live scans`,
+    };
+  const twoSided = candidates.find(
+    (candidate) =>
+      candidate.bid !== undefined && candidate.ask !== undefined && candidate.mid !== undefined,
+  );
   if (!twoSided) return { label: "no", reason: "no two-sided outcome" };
-  if ((twoSided.spread ?? 0) * 100 < config.minSpreadCaptureCents) return { label: "no", reason: `spread < ${config.minSpreadCaptureCents.toFixed(2)}c` };
-  if (twoSided.depthUsd < config.minSpreadDepthUsd) return { label: "no", reason: `depth < $${config.minSpreadDepthUsd.toFixed(2)}` };
-  return { label: "no", reason: `mid outside ${fmtPrice(config.minSpreadEntryMidpoint)}-${fmtPrice(config.maxSpreadMidpoint)}` };
+  if ((twoSided.spread ?? 0) * 100 < config.minSpreadCaptureCents)
+    return { label: "no", reason: `spread < ${config.minSpreadCaptureCents.toFixed(2)}c` };
+  if (twoSided.depthUsd < config.minSpreadDepthUsd)
+    return { label: "no", reason: `depth < $${config.minSpreadDepthUsd.toFixed(2)}` };
+  return {
+    label: "no",
+    reason: `mid outside ${fmtPrice(config.minSpreadEntryMidpoint)}-${fmtPrice(config.maxSpreadMidpoint)}`,
+  };
 }
 
 function rewardMatch(
@@ -134,13 +199,21 @@ function rewardMatch(
   if (!market.reward.isRewardMarket) return { label: "no", reason: "not reward market" };
   const candidate = rewardByMarketAppId.get(market.marketAppId);
   if (!candidate) return { label: "watch", reason: "reward metadata incomplete" };
-  if (candidate.warnings.length === 0) return { label: "good", reason: `daily ${fmtUsd(candidate.reward.estimatedRewardUsdPerDay)}` };
+  if (candidate.warnings.length === 0)
+    return { label: "good", reason: `daily ${fmtUsd(candidate.reward.estimatedRewardUsdPerDay)}` };
   return { label: "watch", reason: candidate.warnings.join("; ") };
 }
 
-export function printScan(scan: AlphaScanResult, rewardCandidates: AlphaOpportunity[], parity: AlphaParityPlan[], config: AlphaConfig): void {
+export function printScan(
+  scan: AlphaScanResult,
+  rewardCandidates: AlphaOpportunity[],
+  parity: AlphaParityPlan[],
+  config: AlphaConfig,
+): void {
   const surface = summarizeBooks(scan.orderbooks.values());
-  const rewardByMarketAppId = new Map(rewardCandidates.map((candidate) => [candidate.marketAppId, candidate]));
+  const rewardByMarketAppId = new Map(
+    rewardCandidates.map((candidate) => [candidate.marketAppId, candidate]),
+  );
   const marketRows = uniqueMarketsByVolume(scan);
   console.log("GHILLIE / ALPHA ARCADE");
   console.log("");
@@ -198,7 +271,11 @@ export function printScan(scan: AlphaScanResult, rewardCandidates: AlphaOpportun
   console.log(`Parity / split-merge candidates: ${parity.length}`);
 }
 
-export function printRewards(rewardMarkets: AlphaMarket[], candidates: AlphaOpportunity[], rewardError?: string): void {
+export function printRewards(
+  rewardMarkets: AlphaMarket[],
+  candidates: AlphaOpportunity[],
+  rewardError?: string,
+): void {
   console.log("GHILLIE / ALPHA REWARDS");
   console.log("");
   if (rewardError) console.log(`Reward metadata warning: ${rewardError}`);
@@ -209,10 +286,14 @@ export function printRewards(rewardMarkets: AlphaMarket[], candidates: AlphaOppo
     sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
   }
   if (sourceCounts.size > 0) {
-    const breakdown = [...sourceCounts.entries()].map(([source, count]) => `${source}=${count}`).join(", ");
+    const breakdown = [...sourceCounts.entries()]
+      .map(([source, count]) => `${source}=${count}`)
+      .join(", ");
     console.log(`Daily-reward source breakdown: ${breakdown}`);
   }
-  console.log(`Showing top ${Math.min(candidates.length, 12)} of ${candidates.length} ranked reward candidate(s).`);
+  console.log(
+    `Showing top ${Math.min(candidates.length, 12)} of ${candidates.length} ranked reward candidate(s).`,
+  );
   console.log("");
   for (const candidate of candidates.slice(0, 12)) {
     console.log("[LP REWARD CANDIDATE]");
@@ -220,8 +301,12 @@ export function printRewards(rewardMarkets: AlphaMarket[], candidates: AlphaOppo
     if (candidate.slug) console.log(`Slug: ${candidate.slug}`);
     console.log(`Daily rewards: ${fmtUsd(candidate.reward.estimatedRewardUsdPerDay)}`);
     console.log(`Competition: ${candidate.reward.competitionLevel ?? "unknown"}`);
-    console.log(`Max reward spread: ${candidate.reward.rewardZoneDistanceCents?.toFixed(2) ?? "unknown"}c`);
-    const minContracts = rewardMarkets.find((market) => market.marketAppId === candidate.marketAppId)?.reward.minContracts;
+    console.log(
+      `Max reward spread: ${candidate.reward.rewardZoneDistanceCents?.toFixed(2) ?? "unknown"}c`,
+    );
+    const minContracts = rewardMarkets.find(
+      (market) => market.marketAppId === candidate.marketAppId,
+    )?.reward.minContracts;
     console.log(`Min aggregate reward size: ${minContracts?.toFixed(6) ?? "unknown"} contracts`);
     console.log(`Reason: ${candidate.reason}`);
     if (candidate.warnings.length > 0) console.log(`Warnings: ${candidate.warnings.join("; ")}`);
@@ -239,9 +324,13 @@ export function printMarketDetail(market: AlphaMarket, book: AlphaOrderbook | un
   console.log(`Close: ${market.closeTime ?? "unknown"}`);
   console.log("");
   console.log(`LP rewards: ${market.reward.isRewardMarket ? "yes" : "no"}`);
-  console.log(`Daily rewards: ${fmtUsd(market.reward.dailyRewardsUsd)} (source: ${market.reward.dailyRewardsSource ?? "unknown"})`);
+  console.log(
+    `Daily rewards: ${fmtUsd(market.reward.dailyRewardsUsd)} (source: ${market.reward.dailyRewardsSource ?? "unknown"})`,
+  );
   console.log(`Max reward spread: ${market.reward.maxRewardSpreadCents?.toFixed(2) ?? "unknown"}c`);
-  console.log(`Min aggregate reward size: ${market.reward.minContracts?.toFixed(6) ?? "unknown"} contracts`);
+  console.log(
+    `Min aggregate reward size: ${market.reward.minContracts?.toFixed(6) ?? "unknown"} contracts`,
+  );
   console.log(`Competition: ${market.reward.competitionLevel ?? "unknown"}`);
   console.log("");
   if (!book) {
@@ -309,26 +398,36 @@ export function summarizeLiveExposure(
   // do not gate (preserves non-live report behaviour).
   const rewardMarketByAppId = new Map<number, AlphaMarket>();
   if (rewardContext.markets) {
-    const iterable = rewardContext.markets instanceof Map ? rewardContext.markets.values() : rewardContext.markets;
+    const iterable =
+      rewardContext.markets instanceof Map ? rewardContext.markets.values() : rewardContext.markets;
     for (const market of iterable) rewardMarketByAppId.set(market.marketAppId, market);
   }
   const haveMarketContext = rewardMarketByAppId.size > 0;
   const isReliableRewardMarket = (marketAppId: number): boolean =>
-    !haveMarketContext || reliableDailyRewardUsd(rewardMarketByAppId.get(marketAppId)) !== undefined;
-  const isReportableRewardOrder = (order: { rewardEligible: boolean; marketAppId: number }): boolean =>
-    order.rewardEligible && isReliableRewardMarket(order.marketAppId);
+    !haveMarketContext ||
+    reliableDailyRewardUsd(rewardMarketByAppId.get(marketAppId)) !== undefined;
+  const isReportableRewardOrder = (order: {
+    rewardEligible: boolean;
+    marketAppId: number;
+  }): boolean => order.rewardEligible && isReliableRewardMarket(order.marketAppId);
 
-  const open = state.openOrders.filter((order) => order.status === "open" && order.runMode === "live");
+  const open = state.openOrders.filter(
+    (order) => order.status === "open" && order.runMode === "live",
+  );
   const bids = open.filter((order) => order.side === "bid");
   const rewardBids = bids.filter((order) => order.source === "reward");
   const rewardEligibleBids = bids.filter((order) => isReportableRewardOrder(order));
   const rewardEligibleOrders = open.filter((order) => isReportableRewardOrder(order));
   const spreadBids = bids.filter((order) => order.source === "spread");
   const exits = open.filter((order) => order.side === "ask" || order.source === "inventory_exit");
-  const controlledExits = exits.filter((order) => order.reason.startsWith("controlled underwater exit"));
+  const controlledExits = exits.filter((order) =>
+    order.reason.startsWith("controlled underwater exit"),
+  );
   const rewardEligibleExits = exits.filter((order) => isReportableRewardOrder(order));
-  const bidExposure = (orders: typeof bids) => orders.reduce((sum, order) => sum + order.price * order.remainingShares, 0);
-  const exitNotional = (orders: typeof exits) => orders.reduce((sum, order) => sum + order.price * order.remainingShares, 0);
+  const bidExposure = (orders: typeof bids) =>
+    orders.reduce((sum, order) => sum + order.price * order.remainingShares, 0);
+  const exitNotional = (orders: typeof exits) =>
+    orders.reduce((sum, order) => sum + order.price * order.remainingShares, 0);
   const exitPnlIfFilledUsd = exits.reduce((sum, order) => {
     const position =
       state.positionsByMarket[String(order.marketAppId)] ?? state.positionsByMarket[order.marketId];
@@ -339,7 +438,10 @@ export function summarizeLiveExposure(
   const now = Date.now();
   const marketEligibility = new Map<number, { restingContracts: number; minContracts: number }>();
   for (const order of rewardEligibleOrders) {
-    const current = marketEligibility.get(order.marketAppId) ?? { restingContracts: 0, minContracts: order.rewardMinContracts ?? 0 };
+    const current = marketEligibility.get(order.marketAppId) ?? {
+      restingContracts: 0,
+      minContracts: order.rewardMinContracts ?? 0,
+    };
     current.restingContracts += order.remainingShares;
     current.minContracts = Math.max(current.minContracts, order.rewardMinContracts ?? 0);
     marketEligibility.set(order.marketAppId, current);
@@ -348,7 +450,10 @@ export function summarizeLiveExposure(
     const created = Date.parse(order.createdAt);
     const ageSeconds = Number.isFinite(created) ? Math.max(0, (now - created) / 1000) : 0;
     const eligibility = marketEligibility.get(order.marketAppId);
-    return ageSeconds >= minDwellSeconds && (eligibility?.restingContracts ?? 0) >= (eligibility?.minContracts ?? 0);
+    return (
+      ageSeconds >= minDwellSeconds &&
+      (eligibility?.restingContracts ?? 0) >= (eligibility?.minContracts ?? 0)
+    );
   });
   const activeRewardBids = activeRewardOrders.filter((order) => order.side === "bid");
   const rewardRateContext = {
@@ -381,14 +486,21 @@ export function summarizeLiveExposure(
     exitPnlIfFilledUsd,
     realisedPlusOpenExitPnlUsd: state.realisedPnl + exitPnlIfFilledUsd,
     underwaterInventoryNotionalUsd: underwaterPositions.reduce(
-      (sum, position) => sum + position.yesShares * position.avgYesCost + position.noShares * position.avgNoCost,
+      (sum, position) =>
+        sum + position.yesShares * position.avgYesCost + position.noShares * position.avgNoCost,
       0,
     ),
-    underwaterInventoryUnrealisedLossUsd: underwaterPositions.reduce((sum, position) => sum + Math.abs(position.unrealisedPnl), 0),
+    underwaterInventoryUnrealisedLossUsd: underwaterPositions.reduce(
+      (sum, position) => sum + Math.abs(position.unrealisedPnl),
+      0,
+    ),
     rewardEligibleExitOrders: rewardEligibleExits.length,
     rewardEligibleExitNotionalUsd: exitNotional(rewardEligibleExits),
     rewardEligibleOrders: rewardEligibleOrders.length,
-    rewardEligibleLiquidityUsd: rewardEligibleOrders.reduce((sum, order) => sum + order.price * order.remainingShares, 0),
+    rewardEligibleLiquidityUsd: rewardEligibleOrders.reduce(
+      (sum, order) => sum + order.price * order.remainingShares,
+      0,
+    ),
     activeRewardBidOrders: activeRewardBids.length,
     activeRewardOrders: activeRewardOrders.length,
     activeRewardLiquidityShare: activeRewardRate.liquidityShare,
@@ -467,7 +579,9 @@ export function printLiveSummary(
       state.strategyStats.parityFailedLegs
     }`,
   );
-  console.log(`  lifetime: placed ${state.strategyStats.liveOrdersPlaced} | cancelled ${state.strategyStats.liveOrdersCancelled}`);
+  console.log(
+    `  lifetime: placed ${state.strategyStats.liveOrdersPlaced} | cancelled ${state.strategyStats.liveOrdersCancelled}`,
+  );
 }
 
 export function printPaperReport(state: AlphaBotState): void {

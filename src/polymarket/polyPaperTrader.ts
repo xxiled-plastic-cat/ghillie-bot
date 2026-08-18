@@ -1,12 +1,22 @@
 import type { PolyConfig } from "./polyConfig.js";
 import { loadPolyScan } from "./polyMarketScanner.js";
-import { scanPolyParity } from "./polyParityScanner.js";
-import { checkPolyPaperRisk } from "./polyPaperRiskManager.js";
+import {
+  expireStalePolyPaperOrders,
+  placePolyPaperQuote,
+  processPolyPaperFills,
+} from "./polyPaperFillTracker.js";
 import { updatePolyPaperUnrealised } from "./polyPaperPnlTracker.js";
-import { buildParityQuotes, buildRewardQuotes, buildSpreadQuotes } from "./polyQuoteEngine.js";
-import { expireStalePolyPaperOrders, placePolyPaperQuote, processPolyPaperFills } from "./polyPaperFillTracker.js";
+import { checkPolyPaperRisk } from "./polyPaperRiskManager.js";
 import { loadPolyPaperState, savePolyPaperState } from "./polyPaperStateStore.js";
-import type { PolyPaperModel, PolyPaperModelState, PolyPaperState, PolyPaperTickResult, PolyPaperTickSummary } from "./polyPaperTypes.js";
+import type {
+  PolyPaperModel,
+  PolyPaperModelState,
+  PolyPaperState,
+  PolyPaperTickResult,
+  PolyPaperTickSummary,
+} from "./polyPaperTypes.js";
+import { scanPolyParity } from "./polyParityScanner.js";
+import { buildParityQuotes, buildRewardQuotes, buildSpreadQuotes } from "./polyQuoteEngine.js";
 
 function elapsedSeconds(state: PolyPaperModelState): number {
   if (!state.lastTickAt) return 0;
@@ -14,9 +24,11 @@ function elapsedSeconds(state: PolyPaperModelState): number {
 }
 
 function runtimeHours(state: PolyPaperModelState, config: PolyConfig): number {
-  const candidates = [state.lastTickAt, ...state.openOrders.map((order) => order.createdAt), ...state.fills.map((fill) => fill.createdAt)].filter(
-    (value): value is string => Boolean(value),
-  );
+  const candidates = [
+    state.lastTickAt,
+    ...state.openOrders.map((order) => order.createdAt),
+    ...state.fills.map((fill) => fill.createdAt),
+  ].filter((value): value is string => Boolean(value));
   if (candidates.length === 0) {
     return (state.metrics.ticks * config.paperScanIntervalMs) / 3_600_000;
   }
@@ -27,7 +39,10 @@ function runtimeHours(state: PolyPaperModelState, config: PolyConfig): number {
   return Math.max(0, (Date.now() - first) / 3_600_000);
 }
 
-function topRejectReasons(reasons: Record<string, number>, limit = 3): Array<{ reason: string; count: number }> {
+function topRejectReasons(
+  reasons: Record<string, number>,
+  limit = 3,
+): Array<{ reason: string; count: number }> {
   return Object.entries(reasons)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
@@ -36,7 +51,9 @@ function topRejectReasons(reasons: Record<string, number>, limit = 3): Array<{ r
 
 function accumulateRewardDwell(state: PolyPaperModelState, seconds: number): void {
   if (seconds <= 0) return;
-  const rewardOpen = state.openOrders.filter((order) => order.status === "open" && order.lane === "reward");
+  const rewardOpen = state.openOrders.filter(
+    (order) => order.status === "open" && order.lane === "reward",
+  );
   if (rewardOpen.length === 0) return;
   state.metrics.rewardEligibleSeconds += seconds * rewardOpen.length;
 }
@@ -50,7 +67,10 @@ function modelTick(
 ): PolyPaperTickSummary {
   const beforeQuotesPlaced = modelState.metrics.quotesPlaced;
   const beforeFills = modelState.metrics.filledCount;
-  const beforeExpired = Object.values(modelState.metrics.expiredByLane).reduce((sum, value) => sum + value, 0);
+  const beforeExpired = Object.values(modelState.metrics.expiredByLane).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   const parityGroups = new Set<string>();
   let rejectedQuotes = 0;
   const rejectReasonCounts: Record<string, number> = {};
@@ -87,7 +107,10 @@ function modelTick(
   accumulateRewardDwell(modelState, elapsed);
   modelState.metrics.ticks += 1;
   modelState.lastTickAt = new Date().toISOString();
-  const expiredTotal = Object.values(modelState.metrics.expiredByLane).reduce((sum, value) => sum + value, 0);
+  const expiredTotal = Object.values(modelState.metrics.expiredByLane).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   const openByLane = modelState.openOrders
     .filter((order) => order.status === "open")
     .reduce(
@@ -119,7 +142,10 @@ function modelTick(
 }
 
 export async function runPolyPaperTick(config: PolyConfig): Promise<PolyPaperTickResult> {
-  const [scan, state] = await Promise.all([loadPolyScan(config), loadPolyPaperState(config.paperStateKey, config.paperStartingBalanceUsd)]);
+  const [scan, state] = await Promise.all([
+    loadPolyScan(config),
+    loadPolyPaperState(config.paperStateKey, config.paperStartingBalanceUsd),
+  ]);
   const parityPlans = scanPolyParity(scan.markets, scan.tokenBooksByConditionId, config);
 
   const conservativeQuotes = [
@@ -140,7 +166,8 @@ export async function runPolyPaperTick(config: PolyConfig): Promise<PolyPaperTic
   updatePolyPaperUnrealised(state.conservative, scan);
   updatePolyPaperUnrealised(state.balanced, scan);
   for (const summary of summaries) {
-    const metrics = summary.model === "conservative" ? state.conservative.metrics : state.balanced.metrics;
+    const metrics =
+      summary.model === "conservative" ? state.conservative.metrics : state.balanced.metrics;
     summary.totalPnl = metrics.totalPnl;
     summary.rewardEligibleHours = metrics.rewardEligibleSeconds / 3600;
   }

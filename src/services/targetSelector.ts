@@ -1,5 +1,5 @@
-import type { LiquiditySignal } from "../types/market.js";
 import type { ExecutionConfig, TopTarget } from "../types/execution.js";
+import type { LiquiditySignal } from "../types/market.js";
 
 function toCents(price: number | undefined, fallback: number, config: ExecutionConfig): number {
   if (price === undefined || Number.isNaN(price)) return fallback;
@@ -34,17 +34,22 @@ function buildReason(signal: LiquiditySignal, targetScore: number): string {
   ].join("; ");
 }
 
-export function selectTopTarget(signals: LiquiditySignal[], config: ExecutionConfig): TopTarget | undefined {
+export function selectTopTarget(
+  signals: LiquiditySignal[],
+  config: ExecutionConfig,
+): TopTarget | undefined {
   const targets = signals
     .map((signal): TopTarget | undefined => {
       const marketId = parseMarketId(signal);
-      if (marketId === undefined || signal.strikeIndex === undefined || signal.haltTs === undefined) return undefined;
+      if (marketId === undefined || signal.strikeIndex === undefined || signal.haltTs === undefined)
+        return undefined;
       if (signal.haltBufferMinutes <= config.haltBlockMinutes) return undefined;
 
       const yesBuyPriceCents = toCents(signal.suggestedYesBid, config.minPriceCents, config);
       const noBuyPriceCents = toCents(signal.suggestedNoBid, config.minPriceCents, config);
       const activeOrdersNeeded = 2;
-      const usdcaAtRiskCents = yesBuyPriceCents * config.orderQuantity + (100 - noBuyPriceCents) * config.orderQuantity;
+      const usdcaAtRiskCents =
+        yesBuyPriceCents * config.orderQuantity + (100 - noBuyPriceCents) * config.orderQuantity;
       if (activeOrdersNeeded > config.maxActiveOrders) return undefined;
       if (usdcaAtRiskCents > config.maxUsdcaAtRiskCents) return undefined;
       if (yesBuyPriceCents + noBuyPriceCents >= 100) return undefined;

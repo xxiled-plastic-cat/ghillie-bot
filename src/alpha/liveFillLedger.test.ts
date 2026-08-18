@@ -21,7 +21,9 @@ import {
 const MICRO = 1_000_000;
 const APP_ID = 1001;
 
-function order(partial: Partial<AlphaPaperOrder> & Pick<AlphaPaperOrder, "liveEscrowAppId" | "side" | "outcome">): AlphaPaperOrder {
+function order(
+  partial: Partial<AlphaPaperOrder> & Pick<AlphaPaperOrder, "liveEscrowAppId" | "side" | "outcome">,
+): AlphaPaperOrder {
   const sizeShares = partial.sizeShares ?? 10;
   const filledShares = partial.filledShares ?? 0;
   return {
@@ -49,7 +51,9 @@ function order(partial: Partial<AlphaPaperOrder> & Pick<AlphaPaperOrder, "liveEs
   };
 }
 
-function walletOrder(partial: Partial<OpenOrder> & Pick<OpenOrder, "escrowAppId" | "quantityFilled">): OpenOrder {
+function walletOrder(
+  partial: Partial<OpenOrder> & Pick<OpenOrder, "escrowAppId" | "quantityFilled">,
+): OpenOrder {
   return {
     escrowAppId: partial.escrowAppId,
     marketAppId: partial.marketAppId ?? APP_ID,
@@ -66,7 +70,16 @@ function walletOrder(partial: Partial<OpenOrder> & Pick<OpenOrder, "escrowAppId"
 describe("liveFillLedger", () => {
   it("updates VWAP on partial fill before close", () => {
     const state = emptyAlphaState(100);
-    const previous = [order({ liveEscrowAppId: 55, side: "bid", outcome: "YES", price: 0.4, sizeShares: 10, filledShares: 0 })];
+    const previous = [
+      order({
+        liveEscrowAppId: 55,
+        side: "bid",
+        outcome: "YES",
+        price: 0.4,
+        sizeShares: 10,
+        filledShares: 0,
+      }),
+    ];
     const events = detectFillDeltasFromWallet({
       previousLiveOrders: previous,
       walletOrders: [walletOrder({ escrowAppId: 55, quantityFilled: 4 * MICRO })],
@@ -88,7 +101,11 @@ describe("liveFillLedger", () => {
     const state = emptyAlphaState(100);
     const previous = [order({ liveEscrowAppId: 55, side: "bid", outcome: "YES", filledShares: 4 })];
     const walletOrders = [walletOrder({ escrowAppId: 55, quantityFilled: 4 * MICRO })];
-    const first = detectFillDeltasFromWallet({ previousLiveOrders: previous, walletOrders, cursor: {} });
+    const first = detectFillDeltasFromWallet({
+      previousLiveOrders: previous,
+      walletOrders,
+      cursor: {},
+    });
     applyLiveFillEvents(state, first);
     const second = detectFillDeltasFromWallet({
       previousLiveOrders: previous,
@@ -104,7 +121,9 @@ describe("liveFillLedger", () => {
   it("cancels closed orders with no fill delta and does not invent PnL", () => {
     const state = emptyAlphaState(100);
     state.realisedPnl = 0;
-    const closed = [order({ liveEscrowAppId: 77, side: "bid", outcome: "YES", sizeShares: 5, filledShares: 0 })];
+    const closed = [
+      order({ liveEscrowAppId: 77, side: "bid", outcome: "YES", sizeShares: 5, filledShares: 0 }),
+    ];
     const events = detectFillDeltasFromWallet({
       previousLiveOrders: closed,
       walletOrders: [],
@@ -131,7 +150,16 @@ describe("liveFillLedger", () => {
       realisedPnl: 0,
       unrealisedPnl: 0,
     };
-    const closed = [order({ liveEscrowAppId: 91, side: "ask", outcome: "YES", price: 0.55, sizeShares: 4, filledShares: 0 })];
+    const closed = [
+      order({
+        liveEscrowAppId: 91,
+        side: "ask",
+        outcome: "YES",
+        price: 0.55,
+        sizeShares: 4,
+        filledShares: 0,
+      }),
+    ];
     const classified = classifyClosedOrdersAgainstInventory({
       closedOrders: closed,
       cursor: {},
@@ -148,7 +176,9 @@ describe("liveFillLedger", () => {
   });
 
   it("treats ask close as cancel when inventory still holds the shares", () => {
-    const closed = [order({ liveEscrowAppId: 92, side: "ask", outcome: "YES", sizeShares: 4, filledShares: 0 })];
+    const closed = [
+      order({ liveEscrowAppId: 92, side: "ask", outcome: "YES", sizeShares: 4, filledShares: 0 }),
+    ];
     const classified = classifyClosedOrdersAgainstInventory({
       closedOrders: closed,
       cursor: {},
@@ -162,7 +192,16 @@ describe("liveFillLedger", () => {
 
   it("applies remaining fill on close then ignores restart replay via cursor", () => {
     const state = emptyAlphaState(100);
-    const closed = [order({ liveEscrowAppId: 88, side: "bid", outcome: "YES", price: 0.5, sizeShares: 10, filledShares: 10 })];
+    const closed = [
+      order({
+        liveEscrowAppId: 88,
+        side: "bid",
+        outcome: "YES",
+        price: 0.5,
+        sizeShares: 10,
+        filledShares: 10,
+      }),
+    ];
     const events = detectFillDeltasFromWallet({
       previousLiveOrders: closed,
       walletOrders: [],
@@ -225,7 +264,13 @@ describe("liveFillLedger", () => {
 
   it("applies place-time matched fills at matchedPrice", () => {
     const state = emptyAlphaState(100);
-    const placed = order({ liveEscrowAppId: 99, side: "bid", outcome: "NO", price: 0.3, sizeShares: 8 });
+    const placed = order({
+      liveEscrowAppId: 99,
+      side: "bid",
+      outcome: "NO",
+      price: 0.3,
+      sizeShares: 8,
+    });
     const event = buildPlaceTimeFillEvent({
       order: placed,
       escrowAppId: 99,

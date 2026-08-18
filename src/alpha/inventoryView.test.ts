@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
 
 import { emptyAlphaState } from "./alphaStateStore.js";
-import { applyBidFillToPosition, ensurePosition } from "./positionAccounting.js";
 import {
   buildInventorySnapshot,
   getPosition,
@@ -13,11 +12,14 @@ import {
   positionKey,
   syncPositionsFromInventory,
 } from "./inventoryView.js";
+import { applyBidFillToPosition, ensurePosition } from "./positionAccounting.js";
 
 const MICRO = 1_000_000;
 const APP_ID = 1001;
 
-function walletPosition(partial: Partial<WalletPosition> & Pick<WalletPosition, "marketAppId">): WalletPosition {
+function walletPosition(
+  partial: Partial<WalletPosition> & Pick<WalletPosition, "marketAppId">,
+): WalletPosition {
   return {
     marketAppId: partial.marketAppId,
     title: partial.title ?? "Test Market",
@@ -28,7 +30,9 @@ function walletPosition(partial: Partial<WalletPosition> & Pick<WalletPosition, 
   };
 }
 
-function walletOrder(partial: Partial<OpenOrder> & Pick<OpenOrder, "escrowAppId" | "marketAppId" | "position">): OpenOrder {
+function walletOrder(
+  partial: Partial<OpenOrder> & Pick<OpenOrder, "escrowAppId" | "marketAppId" | "position">,
+): OpenOrder {
   return {
     escrowAppId: partial.escrowAppId,
     marketAppId: partial.marketAppId,
@@ -83,7 +87,15 @@ describe("inventoryView", () => {
   it("builds snapshot totals as free + sell-escrow", () => {
     const snapshot = buildInventorySnapshot(
       [walletPosition({ marketAppId: APP_ID, yesBalance: 2 * MICRO, noBalance: 0 })],
-      [walletOrder({ escrowAppId: 9, marketAppId: APP_ID, position: 1, quantity: 3 * MICRO, quantityFilled: 0 })],
+      [
+        walletOrder({
+          escrowAppId: 9,
+          marketAppId: APP_ID,
+          position: 1,
+          quantity: 3 * MICRO,
+          quantityFilled: 0,
+        }),
+      ],
     );
     const inventory = snapshot.get(APP_ID);
     assert.ok(inventory);
@@ -101,7 +113,13 @@ describe("inventoryView", () => {
     });
     applyBidFillToPosition(
       state,
-      { marketId: "uuid-market", marketAppId: APP_ID, title: "Test Market", outcome: "YES", price: 0.4 },
+      {
+        marketId: "uuid-market",
+        marketAppId: APP_ID,
+        title: "Test Market",
+        outcome: "YES",
+        price: 0.4,
+      },
       5,
       0.4,
     );
@@ -128,7 +146,10 @@ describe("inventoryView", () => {
     );
     syncPositionsFromInventory(
       state,
-      buildInventorySnapshot([walletPosition({ marketAppId: APP_ID, yesBalance: 0, noBalance: 0 })], []),
+      buildInventorySnapshot(
+        [walletPosition({ marketAppId: APP_ID, yesBalance: 0, noBalance: 0 })],
+        [],
+      ),
     );
     // Market absent from snapshot with zero balances — sync does not auto-wipe
     // tracked rows that are only missing from wallet; clearing happens when

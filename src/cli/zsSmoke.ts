@@ -3,8 +3,6 @@
  * Never requests execution quotes, never signs, never places orders.
  */
 import dotenv from "dotenv";
-
-import { createAmarokCliRuntime, printCliError } from "./amarokShared.js";
 import {
   assertZsProxyHealthy,
   createZeroSignalClient,
@@ -14,6 +12,7 @@ import {
   selectAgentResearchTools,
   toOpenAiFunctionTool,
 } from "../integrations/zerosignal/index.js";
+import { createAmarokCliRuntime, printCliError } from "./amarokShared.js";
 
 dotenv.config();
 
@@ -130,8 +129,7 @@ export async function runZsSmoke(): Promise<{
       baseURL: zs.config.openaiBaseUrl,
       toolCalled,
       opportunityCount,
-      assistantText:
-        loop.response.output_text ?? extractOutputText(loop.response.output),
+      assistantText: loop.response.output_text ?? extractOutputText(loop.response.output),
       x402BaseUnits,
       inferenceCostLine: formatInferenceCostLine(loop.inferenceCost),
     };

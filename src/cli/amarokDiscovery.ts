@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 
-import { McpSdkToolCaller, AmarokClient } from "../integrations/amarok/client.js";
+import { AmarokClient, McpSdkToolCaller } from "../integrations/amarok/client.js";
 import { printCliError } from "./amarokShared.js";
 
 dotenv.config();

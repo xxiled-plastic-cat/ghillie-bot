@@ -33,20 +33,38 @@ export function buildPolyPaperReport(
   config: PolyConfig,
 ): PolyPaperReport {
   const modelState = model === "conservative" ? state.conservative : state.balanced;
-  const fillRate = modelState.metrics.quotesPlaced > 0 ? modelState.metrics.filledCount / modelState.metrics.quotesPlaced : 0;
-  const cancelled = Object.values(modelState.metrics.expiredByLane).reduce((sum, value) => sum + value, 0);
-  const cancellationRatio = modelState.metrics.quotesPlaced > 0 ? cancelled / modelState.metrics.quotesPlaced : 0;
+  const fillRate =
+    modelState.metrics.quotesPlaced > 0
+      ? modelState.metrics.filledCount / modelState.metrics.quotesPlaced
+      : 0;
+  const cancelled = Object.values(modelState.metrics.expiredByLane).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const cancellationRatio =
+    modelState.metrics.quotesPlaced > 0 ? cancelled / modelState.metrics.quotesPlaced : 0;
   const medianFillSeconds = percentile(modelState.metrics.fillSeconds, 0.5);
   const p95FillSeconds = percentile(modelState.metrics.fillSeconds, 0.95);
   const quoteCompetitivenessBps =
-    modelState.metrics.quoteDistanceSamples > 0 ? modelState.metrics.quoteDistanceBpsSum / modelState.metrics.quoteDistanceSamples : undefined;
+    modelState.metrics.quoteDistanceSamples > 0
+      ? modelState.metrics.quoteDistanceBpsSum / modelState.metrics.quoteDistanceSamples
+      : undefined;
   const parityConversionRate =
-    modelState.metrics.parityAttempts > 0 ? modelState.metrics.parityFilled / modelState.metrics.parityAttempts : 0;
+    modelState.metrics.parityAttempts > 0
+      ? modelState.metrics.parityFilled / modelState.metrics.parityAttempts
+      : 0;
   const quotedEdgeAvg =
-    modelState.metrics.parityAttempts > 0 ? modelState.metrics.parityQuotedEdgeBpsSum / modelState.metrics.parityAttempts : undefined;
+    modelState.metrics.parityAttempts > 0
+      ? modelState.metrics.parityQuotedEdgeBpsSum / modelState.metrics.parityAttempts
+      : undefined;
   const filledEdgeAvg =
-    modelState.metrics.parityFilled > 0 ? modelState.metrics.parityFilledEdgeBpsSum / modelState.metrics.parityFilled : undefined;
-  const parityEdgeDecayBps = quotedEdgeAvg !== undefined && filledEdgeAvg !== undefined ? quotedEdgeAvg - filledEdgeAvg : undefined;
+    modelState.metrics.parityFilled > 0
+      ? modelState.metrics.parityFilledEdgeBpsSum / modelState.metrics.parityFilled
+      : undefined;
+  const parityEdgeDecayBps =
+    quotedEdgeAvg !== undefined && filledEdgeAvg !== undefined
+      ? quotedEdgeAvg - filledEdgeAvg
+      : undefined;
 
   let verdict: PolyPaperReport["verdict"] = "viable";
   const medianForCheck = medianFillSeconds ?? Number.POSITIVE_INFINITY;

@@ -28,12 +28,28 @@ function findBestSize(
   slippageCents: number,
   edgeForPrices: (yesPrice: number, noPrice: number) => number,
   notionalForPrices: (sizeShares: number, yesPrice: number, noPrice: number) => number,
-): { sizeShares: number; yesPrice: number; noPrice: number; grossEdgeBps: number; estimatedNetEdgeBps: number } | undefined {
+):
+  | {
+      sizeShares: number;
+      yesPrice: number;
+      noPrice: number;
+      grossEdgeBps: number;
+      estimatedNetEdgeBps: number;
+    }
+  | undefined {
   if (maxShares <= 0 || maxNotionalUsd <= 0 || maxNotionalUsd < minNotionalUsd) return undefined;
   const slippageBufferBps = (slippageCents / 100) * 2 * 10_000;
   let low = 0.000001;
   let high = maxShares;
-  let best: { sizeShares: number; yesPrice: number; noPrice: number; grossEdgeBps: number; estimatedNetEdgeBps: number } | undefined;
+  let best:
+    | {
+        sizeShares: number;
+        yesPrice: number;
+        noPrice: number;
+        grossEdgeBps: number;
+        estimatedNetEdgeBps: number;
+      }
+    | undefined;
 
   for (let i = 0; i < 24; i += 1) {
     const sizeShares = (low + high) / 2;
@@ -61,7 +77,11 @@ function findBestSize(
   return best;
 }
 
-function planParityBuy(market: AlphaMarket, book: AlphaOrderbook, config: AlphaConfig): AlphaParityPlan | undefined {
+function planParityBuy(
+  market: AlphaMarket,
+  book: AlphaOrderbook,
+  config: AlphaConfig,
+): AlphaParityPlan | undefined {
   const yesAsks = [...book.yesSideOrders.asks].sort((a, b) => a.price - b.price);
   const noAsks = [...book.noSideOrders.asks].sort((a, b) => a.price - b.price);
   const maxShares = Math.min(totalShares(yesAsks), totalShares(noAsks));
@@ -97,7 +117,11 @@ function planParityBuy(market: AlphaMarket, book: AlphaOrderbook, config: AlphaC
   };
 }
 
-function planSplitSell(market: AlphaMarket, book: AlphaOrderbook, config: AlphaConfig): AlphaParityPlan | undefined {
+function planSplitSell(
+  market: AlphaMarket,
+  book: AlphaOrderbook,
+  config: AlphaConfig,
+): AlphaParityPlan | undefined {
   const yesBids = [...book.yesSideOrders.bids].sort((a, b) => b.price - a.price);
   const noBids = [...book.noSideOrders.bids].sort((a, b) => b.price - a.price);
   const maxShares = Math.min(totalShares(yesBids), totalShares(noBids));
@@ -133,7 +157,11 @@ function planSplitSell(market: AlphaMarket, book: AlphaOrderbook, config: AlphaC
   };
 }
 
-export function scanParity(markets: AlphaMarket[], books: Map<number, AlphaOrderbook>, config: AlphaConfig): AlphaParityPlan[] {
+export function scanParity(
+  markets: AlphaMarket[],
+  books: Map<number, AlphaOrderbook>,
+  config: AlphaConfig,
+): AlphaParityPlan[] {
   const plans: AlphaParityPlan[] = [];
   for (const market of markets) {
     const book = books.get(market.marketAppId);

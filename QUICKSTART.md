@@ -6,7 +6,7 @@ Dry-run is the default. It does **not** place, cancel, claim, merge, or submit A
 
 Never commit `.env`, mnemonics, API keys, or payment signatures. `.gitignore` already ignores `.env`.
 
-Developers: [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md). GitHub Actions already runs `npm run typecheck` and `npm test` on PRs (no live MCP / zs-proxy in CI).
+Developers: [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md). GitHub Actions already runs `npm run format:check`, `npm run lint`, `npm run typecheck`, and `npm test` on PRs (no live MCP / zs-proxy in CI).
 
 ## 1. Clone and install
 

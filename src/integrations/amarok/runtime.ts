@@ -1,7 +1,7 @@
 import type { AlphaConfig } from "../../alpha/alphaConfig.js";
 import { AmarokClient, McpSdkToolCaller } from "./client.js";
 import { AlgorandPaymentBuilder } from "./payment.js";
-import { walletFromMnemonic, type AgentWallet } from "./wallet.js";
+import { type AgentWallet, walletFromMnemonic } from "./wallet.js";
 
 export type AmarokRuntime = {
   client: AmarokClient;

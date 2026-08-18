@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  parseInferenceCostFromHeaders,
-  type InferenceCostCharge,
-} from "./inferenceCost.js";
+import { type InferenceCostCharge, parseInferenceCostFromHeaders } from "./inferenceCost.js";
 
 const responseSchema = z
   .object({
@@ -43,8 +40,7 @@ export type FunctionCallItem = z.infer<typeof functionCallSchema>;
 /** Normalize Responses API payloads (including ZeroSignal empty `id`). */
 export function normalizeAgentResponse(raw: unknown): NormalizedAgentResponse {
   const parsed = responseSchema.parse(raw);
-  const id =
-    typeof parsed.id === "string" && parsed.id.trim().length > 0 ? parsed.id : undefined;
+  const id = typeof parsed.id === "string" && parsed.id.trim().length > 0 ? parsed.id : undefined;
   const output_text =
     parsed.output_text && parsed.output_text.length > 0
       ? parsed.output_text
@@ -176,9 +172,7 @@ export async function createAgentResponse(
       return {
         data,
         headers:
-          record.headers instanceof Headers
-            ? record.headers
-            : headersFromRecord(record.headers),
+          record.headers instanceof Headers ? record.headers : headersFromRecord(record.headers),
       };
     }
     return { data };
@@ -208,7 +202,7 @@ export function assertZsResponseRequest(request: unknown): void {
   }
   const record = request as Record<string, unknown>;
   if (record.store !== false) {
-    throw new Error('ZeroSignal responses.create requires store: false');
+    throw new Error("ZeroSignal responses.create requires store: false");
   }
   if ("previous_response_id" in record && record.previous_response_id != null) {
     throw new Error(

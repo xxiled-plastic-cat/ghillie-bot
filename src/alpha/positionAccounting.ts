@@ -1,5 +1,5 @@
-import { ensurePositionByAppId } from "./inventoryView.js";
 import type { AlphaBotState, AlphaOutcome, AlphaPaperOrder } from "./alphaTypes.js";
+import { ensurePositionByAppId } from "./inventoryView.js";
 
 export function ensurePosition(
   state: AlphaBotState,
@@ -54,6 +54,9 @@ export function applyAskFillToPosition(
   return pnl;
 }
 
-export function positionShares(position: { yesShares: number; noShares: number }, outcome: AlphaOutcome): number {
+export function positionShares(
+  position: { yesShares: number; noShares: number },
+  outcome: AlphaOutcome,
+): number {
   return outcome === "YES" ? position.yesShares : position.noShares;
 }

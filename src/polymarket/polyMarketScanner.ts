@@ -1,8 +1,11 @@
-import type { PolyConfig } from "./polyConfig.js";
 import { PolyClient } from "./polyClient.js";
+import type { PolyConfig } from "./polyConfig.js";
 import type { PolyMarket, PolyOrderbook, PolyScanResult, PolyTokenBookPair } from "./polyTypes.js";
 
-function tokenPairForMarket(market: PolyMarket, orderbooksByTokenId: Map<string, PolyOrderbook>): PolyTokenBookPair {
+function tokenPairForMarket(
+  market: PolyMarket,
+  orderbooksByTokenId: Map<string, PolyOrderbook>,
+): PolyTokenBookPair {
   const [first, second] = market.tokens;
   return {
     yesToken: first,
@@ -12,7 +15,11 @@ function tokenPairForMarket(market: PolyMarket, orderbooksByTokenId: Map<string,
   };
 }
 
-function mergeMarkets(rewardMarkets: PolyMarket[], liveMarkets: PolyMarket[], maxMarkets: number): PolyMarket[] {
+function mergeMarkets(
+  rewardMarkets: PolyMarket[],
+  liveMarkets: PolyMarket[],
+  maxMarkets: number,
+): PolyMarket[] {
   const byCondition = new Map<string, PolyMarket>();
   for (const market of [...rewardMarkets, ...liveMarkets]) {
     const previous = byCondition.get(market.conditionId);
@@ -52,21 +59,35 @@ function isMarketActiveForScan(market: PolyMarket): boolean {
 
 export async function loadPolyScan(config: PolyConfig): Promise<PolyScanResult> {
   const client = new PolyClient(config);
-  const [rewardMarkets, liveMarkets] = await Promise.all([client.getRewardMarkets(), client.getLiveMarkets()]);
+  const [rewardMarkets, liveMarkets] = await Promise.all([
+    client.getRewardMarkets(),
+    client.getLiveMarkets(),
+  ]);
   const seenMarkets = mergeMarkets(rewardMarkets, liveMarkets, config.maxMarketsPerScan);
   const markets = seenMarkets.filter(isMarketActiveForScan);
 
-  const rewardConditions = new Set(rewardMarkets.filter(isMarketActiveForScan).map((market) => market.conditionId));
-  const reward = markets.filter((market) => rewardConditions.has(market.conditionId) || market.reward.isRewardMarket);
+  const rewardConditions = new Set(
+    rewardMarkets.filter(isMarketActiveForScan).map((market) => market.conditionId),
+  );
+  const reward = markets.filter(
+    (market) => rewardConditions.has(market.conditionId) || market.reward.isRewardMarket,
+  );
 
   const rewardSlice = reward.slice(0, config.rewardOrderbookLimit);
-  const spreadSlice = markets.filter((market) => !rewardConditions.has(market.conditionId)).slice(0, config.scanOrderbookLimit);
-  const tokenIds = [...rewardSlice, ...spreadSlice].flatMap((market) => market.tokens.map((token) => token.tokenId));
+  const spreadSlice = markets
+    .filter((market) => !rewardConditions.has(market.conditionId))
+    .slice(0, config.scanOrderbookLimit);
+  const tokenIds = [...rewardSlice, ...spreadSlice].flatMap((market) =>
+    market.tokens.map((token) => token.tokenId),
+  );
   const orderbooksByTokenId = await client.getOrderbooks(tokenIds);
 
   const tokenBooksByConditionId = new Map<string, PolyTokenBookPair>();
   for (const market of markets) {
-    tokenBooksByConditionId.set(market.conditionId, tokenPairForMarket(market, orderbooksByTokenId));
+    tokenBooksByConditionId.set(
+      market.conditionId,
+      tokenPairForMarket(market, orderbooksByTokenId),
+    );
   }
 
   return {

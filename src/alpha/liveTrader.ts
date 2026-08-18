@@ -1,17 +1,36 @@
+import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
+import {
+  parseExecutionQuotePayload,
+  signAndSubmitUnsignedGroup,
+} from "../integrations/algorand/submitUnsigned.js";
+import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
+import { isDebugModeEnabled } from "../utils/debugMode.js";
+import { AlphaSdkClient, fromMicroUnits, roundShares } from "./alphaClient.js";
 import type { AlphaConfig, AlphaMode } from "./alphaConfig.js";
 import { validateLiveConfig } from "./alphaConfig.js";
-import { AlphaSdkClient, fromMicroUnits, roundShares } from "./alphaClient.js";
+import type { AlphaScanResult } from "./alphaMarketScanner.js";
 import { checkQuoteRisk, getInventoryNotionalUsd } from "./alphaRiskManager.js";
 import { loadAlphaState, saveAlphaState } from "./alphaStateStore.js";
-import type { AlphaBotState, AlphaMarket, AlphaOrderbook, AlphaOutcome, AlphaPaperOrder, AlphaPaperPosition, AlphaQuote } from "./alphaTypes.js";
-import type { AlphaScanResult } from "./alphaMarketScanner.js";
-import { generateQuotes, rewardLaneAllowsMarket } from "./quoteEngine.js";
-import { runParityLane } from "./parityTrader.js";
-import { runInventoryMergeLane } from "./inventoryMerger.js";
-import { runResolvedClaimLane } from "./resolvedClaimLane.js";
-import { updateUnrealisedPnl } from "./pnlTracker.js";
-import { accrueEstimatedRewards } from "./rewardTracker.js";
+import type {
+  AlphaBotState,
+  AlphaMarket,
+  AlphaOrderbook,
+  AlphaOutcome,
+  AlphaPaperOrder,
+  AlphaPaperPosition,
+  AlphaQuote,
+} from "./alphaTypes.js";
 import { buildCapitalLedger, mergeCapitalLedgerIntoState } from "./capitalLedger.js";
+import { runInventoryMergeLane } from "./inventoryMerger.js";
+import {
+  buildInventorySnapshot,
+  escrowedSellSharesFor,
+  getPosition,
+  INVENTORY_SHARE_EPSILON,
+  inventoryInvariantMismatches,
+  migratePositionsToAppIdKeys,
+  syncPositionsFromInventory,
+} from "./inventoryView.js";
 import {
   applyLiveFillEvents,
   buildPlaceTimeFillEvent,
@@ -19,20 +38,12 @@ import {
   detectFillDeltasFromWallet,
   inventorySideKey,
 } from "./liveFillLedger.js";
-import {
-  buildInventorySnapshot,
-  escrowedSellSharesFor,
-  getPosition,
-  inventoryInvariantMismatches,
-  migratePositionsToAppIdKeys,
-  syncPositionsFromInventory,
-  INVENTORY_SHARE_EPSILON,
-} from "./inventoryView.js";
-import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
-import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
-import { parseExecutionQuotePayload, signAndSubmitUnsignedGroup } from "../integrations/algorand/submitUnsigned.js";
-import { isDebugModeEnabled } from "../utils/debugMode.js";
+import { runParityLane } from "./parityTrader.js";
 import { runPlanReview } from "./planReview/index.js";
+import { updateUnrealisedPnl } from "./pnlTracker.js";
+import { generateQuotes, rewardLaneAllowsMarket } from "./quoteEngine.js";
+import { runResolvedClaimLane } from "./resolvedClaimLane.js";
+import { accrueEstimatedRewards } from "./rewardTracker.js";
 
 const CONTROLLED_UNDERWATER_EXIT_REASON = "controlled underwater exit";
 
@@ -40,7 +51,10 @@ function fmtMemoryMb(bytes: number): string {
   return (bytes / 1024 / 1024).toFixed(1);
 }
 
-function logLiveMemory(phase: string, details: Record<string, number | string | boolean | undefined> = {}): void {
+function logLiveMemory(
+  phase: string,
+  details: Record<string, number | string | boolean | undefined> = {},
+): void {
   if (!isDebugModeEnabled()) return;
   const memory = process.memoryUsage();
   const detailText = Object.entries(details)
@@ -136,7 +150,11 @@ function quoteSizeDeltaUsd(order: AlphaPaperOrder, quote: AlphaQuote): number {
   return Math.abs(order.price * order.remainingShares - quote.notionalUsd);
 }
 
-function isEquivalentQuote(order: AlphaPaperOrder, quote: AlphaQuote, config: AlphaConfig): boolean {
+function isEquivalentQuote(
+  order: AlphaPaperOrder,
+  quote: AlphaQuote,
+  config: AlphaConfig,
+): boolean {
   if (quoteKey(order) !== quoteKey(quote)) return false;
   if (quoteDeltaCents(order, quote) > config.quoteRefreshThresholdCents) return false;
   const sizeToleranceUsd = Math.max(0.1, quote.notionalUsd * 0.1);
@@ -189,7 +207,10 @@ function mergeLiveOrdersFromWallet(
   return { synced: openLive.length, closedOrders };
 }
 
-function positionShareCount(position: { yesShares: number; noShares: number }, outcome: AlphaOutcome): number {
+function positionShareCount(
+  position: { yesShares: number; noShares: number },
+  outcome: AlphaOutcome,
+): number {
   return outcome === "YES" ? position.yesShares : position.noShares;
 }
 
@@ -197,23 +218,42 @@ function fmtSignedUsd(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${Math.abs(value).toFixed(4)}`;
 }
 
-function getOutcomeBook(book: AlphaOrderbook, outcome: AlphaOutcome): { bid?: number; ask?: number; mid?: number; spread?: number } {
+function getOutcomeBook(
+  book: AlphaOrderbook,
+  outcome: AlphaOutcome,
+): { bid?: number; ask?: number; mid?: number; spread?: number } {
   return outcome === "YES"
     ? { bid: book.yesBid, ask: book.yesAsk, mid: book.yesMid, spread: book.yesSpread }
     : { bid: book.noBid, ask: book.noAsk, mid: book.noMid, spread: book.noSpread };
 }
 
-function bestExternalDepthUsd(levels: Array<{ price: number; quantityShares: number; owner?: string }>, walletAddress?: string): number {
-  const level = levels.find((candidate) => candidate.owner === undefined || candidate.owner !== walletAddress);
+function bestExternalDepthUsd(
+  levels: Array<{ price: number; quantityShares: number; owner?: string }>,
+  walletAddress?: string,
+): number {
+  const level = levels.find(
+    (candidate) => candidate.owner === undefined || candidate.owner !== walletAddress,
+  );
   return level ? level.price * level.quantityShares : 0;
 }
 
-function outcomeDepthUsd(book: AlphaOrderbook, outcome: AlphaOutcome, walletAddress?: string): number {
+function outcomeDepthUsd(
+  book: AlphaOrderbook,
+  outcome: AlphaOutcome,
+  walletAddress?: string,
+): number {
   const orders = outcome === "YES" ? book.yesSideOrders : book.noSideOrders;
-  return Math.min(bestExternalDepthUsd(orders.bids, walletAddress), bestExternalDepthUsd(orders.asks, walletAddress));
+  return Math.min(
+    bestExternalDepthUsd(orders.bids, walletAddress),
+    bestExternalDepthUsd(orders.asks, walletAddress),
+  );
 }
 
-function outcomeIsTwoSided(book: AlphaOrderbook, outcome: AlphaOutcome, walletAddress?: string): boolean {
+function outcomeIsTwoSided(
+  book: AlphaOrderbook,
+  outcome: AlphaOutcome,
+  walletAddress?: string,
+): boolean {
   const outcomeBook = getOutcomeBook(book, outcome);
   return (
     outcomeBook.bid !== undefined &&
@@ -267,7 +307,11 @@ function updateSpreadMarketStats(
   return updated;
 }
 
-function spreadEntryRejection(quote: AlphaQuote, state: AlphaBotState, config: AlphaConfig): string | undefined {
+function spreadEntryRejection(
+  quote: AlphaQuote,
+  state: AlphaBotState,
+  config: AlphaConfig,
+): string | undefined {
   if (quote.source !== "spread" || quote.side !== "bid") return undefined;
   const stats = state.spreadStatsByMarket[String(quote.marketAppId)];
   if (!stats) return "spread market has not been observed yet";
@@ -289,7 +333,11 @@ function spreadEntryRejection(quote: AlphaQuote, state: AlphaBotState, config: A
 function spreadQuoteQuality(quote: AlphaQuote, state: AlphaBotState): number {
   const stats = state.spreadStatsByMarket[String(quote.marketAppId)];
   if (!stats) return 0;
-  return Math.log10((stats.volume ?? 0) + 1) * 10 + (stats.bestDepthUsd ?? 0) + (stats.bestSpreadCents ?? 0);
+  return (
+    Math.log10((stats.volume ?? 0) + 1) * 10 +
+    (stats.bestDepthUsd ?? 0) +
+    (stats.bestSpreadCents ?? 0)
+  );
 }
 
 function shouldTrackSpreadStats(config: AlphaConfig): boolean {
@@ -321,15 +369,32 @@ function findMarketForPosition(
   return [...marketByAppId.values()].find((market) => market.id === position.marketId);
 }
 
-function trackedOutcomeAgeSeconds(state: AlphaBotState, marketAppId: number, outcome: AlphaOutcome, now = Date.now()): number | undefined {
+function trackedOutcomeAgeSeconds(
+  state: AlphaBotState,
+  marketAppId: number,
+  outcome: AlphaOutcome,
+  now = Date.now(),
+): number | undefined {
   const timestamps: number[] = [];
   for (const order of state.openOrders) {
-    if (order.runMode !== "live" || order.marketAppId !== marketAppId || order.outcome !== outcome || order.side !== "bid") continue;
+    if (
+      order.runMode !== "live" ||
+      order.marketAppId !== marketAppId ||
+      order.outcome !== outcome ||
+      order.side !== "bid"
+    )
+      continue;
     const created = Date.parse(order.createdAt);
     if (Number.isFinite(created)) timestamps.push(created);
   }
   for (const fill of state.fills) {
-    if (fill.runMode !== "live" || fill.marketAppId !== marketAppId || fill.outcome !== outcome || fill.side !== "bid") continue;
+    if (
+      fill.runMode !== "live" ||
+      fill.marketAppId !== marketAppId ||
+      fill.outcome !== outcome ||
+      fill.side !== "bid"
+    )
+      continue;
     const when = Date.parse(fill.updatedAt ?? fill.createdAt);
     if (Number.isFinite(when)) timestamps.push(when);
   }
@@ -341,7 +406,11 @@ function expectedLossUsd(averageCost: number, ask: number, shares: number): numb
   return Math.max(0, (averageCost - ask) * shares);
 }
 
-function controlledUnderwaterMarketLossUsd(state: AlphaBotState, marketAppId: number, ignoreEscrowAppId?: number): number {
+function controlledUnderwaterMarketLossUsd(
+  state: AlphaBotState,
+  marketAppId: number,
+  ignoreEscrowAppId?: number,
+): number {
   return state.openOrders
     .filter(
       (order) =>
@@ -372,7 +441,8 @@ function controlledUnderwaterExitStatus(
 ): { allowed: boolean; reason: string } {
   const position = getPosition(state, marketAppId);
   const averageCost = outcome === "YES" ? position?.avgYesCost : position?.avgNoCost;
-  if (averageCost === undefined || averageCost <= 0) return { allowed: false, reason: "tracked cost basis unavailable" };
+  if (averageCost === undefined || averageCost <= 0)
+    return { allowed: false, reason: "tracked cost basis unavailable" };
   if (!config.underwaterExitEnabled) return { allowed: false, reason: "underwater exits disabled" };
   const ageSeconds = trackedOutcomeAgeSeconds(state, marketAppId, outcome);
   if ((ageSeconds ?? 0) < config.underwaterExitMinAgeHours * 3600) {
@@ -398,12 +468,21 @@ function controlledUnderwaterExitStatus(
     };
   }
   if (lossCents > config.underwaterExitMaxLossCents) {
-    return { allowed: false, reason: `loss ${lossCents.toFixed(2)}c exceeds cap ${config.underwaterExitMaxLossCents.toFixed(2)}c` };
+    return {
+      allowed: false,
+      reason: `loss ${lossCents.toFixed(2)}c exceeds cap ${config.underwaterExitMaxLossCents.toFixed(2)}c`,
+    };
   }
   const notional = ask * shares;
-  const notionalCap = Math.max(config.underwaterExitMaxNotionalUsd, config.inventoryExitMaxNotionalUsd);
+  const notionalCap = Math.max(
+    config.underwaterExitMaxNotionalUsd,
+    config.inventoryExitMaxNotionalUsd,
+  );
   if (notional > notionalCap + 1e-9) {
-    return { allowed: false, reason: `notional $${notional.toFixed(2)} exceeds unwind cap $${notionalCap.toFixed(2)}` };
+    return {
+      allowed: false,
+      reason: `notional $${notional.toFixed(2)} exceeds unwind cap $${notionalCap.toFixed(2)}`,
+    };
   }
   if (!config.inventoryExitFullPosition) {
     const marketLossUsed = controlledUnderwaterMarketLossUsd(state, marketAppId, ignoreEscrowAppId);
@@ -415,7 +494,10 @@ function controlledUnderwaterExitStatus(
       };
     }
   }
-  return { allowed: true, reason: `controlled underwater exit eligible; loss ${lossCents.toFixed(2)}c` };
+  return {
+    allowed: true,
+    reason: `controlled underwater exit eligible; loss ${lossCents.toFixed(2)}c`,
+  };
 }
 
 function describeMissingExit(
@@ -431,7 +513,8 @@ function describeMissingExit(
   const outcomeBook = getOutcomeBook(book, outcome);
   if (outcomeBook.mid === undefined) return "same-outcome midpoint unavailable";
   const averageCost = outcome === "YES" ? position.avgYesCost : position.avgNoCost;
-  const minimumProfitableAsk = averageCost > 0 ? averageCost + config.spreadExitEdgeCents / 100 : undefined;
+  const minimumProfitableAsk =
+    averageCost > 0 ? averageCost + config.spreadExitEdgeCents / 100 : undefined;
   const shares = positionShareCount(position, outcome);
   const costFloorReason = (ask: number) =>
     minimumProfitableAsk !== undefined && ask < minimumProfitableAsk
@@ -441,17 +524,31 @@ function describeMissingExit(
               2,
             )}c); tracked cost basis available but marketAppId missing`;
           }
-          const status = controlledUnderwaterExitStatus(state, position.marketAppId, outcome, ask, shares, config);
+          const status = controlledUnderwaterExitStatus(
+            state,
+            position.marketAppId,
+            outcome,
+            ask,
+            shares,
+            config,
+          );
           return `target ask ${ask.toFixed(3)} below cost floor ${minimumProfitableAsk.toFixed(3)} (avg ${averageCost.toFixed(3)} + ${config.spreadExitEdgeCents.toFixed(
             2,
           )}c); ${status.reason}`;
         })()
       : undefined;
-  const spreadMidpointAllowed = outcomeBook.mid >= config.minSpreadExitMidpoint && outcomeBook.mid <= config.maxSpreadMidpoint;
-  const rewardMidpointAllowed = outcomeBook.mid >= config.minMidpoint && outcomeBook.mid <= config.maxMidpoint;
-  if (market.reward.isRewardMarket && market.reward.maxRewardSpreadCents !== undefined && rewardMidpointAllowed) {
+  const spreadMidpointAllowed =
+    outcomeBook.mid >= config.minSpreadExitMidpoint && outcomeBook.mid <= config.maxSpreadMidpoint;
+  const rewardMidpointAllowed =
+    outcomeBook.mid >= config.minMidpoint && outcomeBook.mid <= config.maxMidpoint;
+  if (
+    market.reward.isRewardMarket &&
+    market.reward.maxRewardSpreadCents !== undefined &&
+    rewardMidpointAllowed
+  ) {
     const rewardAsk = outcomeBook.mid + config.rewardZoneBufferCents / 100;
-    if (rewardAsk <= 0 || rewardAsk >= 1) return `reward-zone ask ${rewardAsk.toFixed(3)} outside valid price range`;
+    if (rewardAsk <= 0 || rewardAsk >= 1)
+      return `reward-zone ask ${rewardAsk.toFixed(3)} outside valid price range`;
     const costReason = costFloorReason(rewardAsk);
     if (costReason) return costReason;
     return "reward-zone exit looked possible but no quote was produced";
@@ -505,9 +602,16 @@ function quoteRewardContracts(quote: AlphaQuote): number {
   return quote.rewardEligible ? quote.sizeShares : 0;
 }
 
-function addRewardContracts(contractsByMarket: Map<number, number>, marketAppId: number, contracts: number): void {
+function addRewardContracts(
+  contractsByMarket: Map<number, number>,
+  marketAppId: number,
+  contracts: number,
+): void {
   if (contracts === 0) return;
-  contractsByMarket.set(marketAppId, Math.max(0, (contractsByMarket.get(marketAppId) ?? 0) + contracts));
+  contractsByMarket.set(
+    marketAppId,
+    Math.max(0, (contractsByMarket.get(marketAppId) ?? 0) + contracts),
+  );
 }
 
 function queuedRewardContractsByMarket(quotes: AlphaQuote[]): Map<number, number> {
@@ -518,17 +622,27 @@ function queuedRewardContractsByMarket(quotes: AlphaQuote[]): Map<number, number
   return contracts;
 }
 
-function replacePendingRewardContracts(contractsByMarket: Map<number, number>, previous: AlphaQuote, next?: AlphaQuote): void {
+function replacePendingRewardContracts(
+  contractsByMarket: Map<number, number>,
+  previous: AlphaQuote,
+  next?: AlphaQuote,
+): void {
   addRewardContracts(contractsByMarket, previous.marketAppId, -quoteRewardContracts(previous));
   if (next) addRewardContracts(contractsByMarket, next.marketAppId, quoteRewardContracts(next));
 }
 
-function rewardMinContractsForOrder(order: AlphaPaperOrder, market: AlphaMarket | undefined): number | undefined {
+function rewardMinContractsForOrder(
+  order: AlphaPaperOrder,
+  market: AlphaMarket | undefined,
+): number | undefined {
   const configuredMin = order.rewardMinContracts ?? market?.reward.minContracts;
   return configuredMin === undefined || configuredMin <= 0 ? undefined : configuredMin;
 }
 
-function decrementRewardContracts(contractsByMarket: Map<number, number>, order: AlphaPaperOrder): void {
+function decrementRewardContracts(
+  contractsByMarket: Map<number, number>,
+  order: AlphaPaperOrder,
+): void {
   if (!order.rewardEligible) return;
   addRewardContracts(contractsByMarket, order.marketAppId, -order.remainingShares);
 }
@@ -547,7 +661,8 @@ function resizeBidQuoteToBudget(
   const requiredUsdc = requiredBidUsdc(quote, config);
   if (requiredUsdc <= remainingLiveBidUsdc) return { quote, resized: false };
   const budgetMultiplier = 1 + config.liveBidUsdcBufferBps / 10_000;
-  if (budgetMultiplier <= 0) return { reason: "invalid live bid buffer configuration", resized: false };
+  if (budgetMultiplier <= 0)
+    return { reason: "invalid live bid buffer configuration", resized: false };
   const maxNotionalUsd = remainingLiveBidUsdc / budgetMultiplier;
   const minNotionalUsd = quoteMinNotionalUsd(quote, config);
   if (maxNotionalUsd < minNotionalUsd) {
@@ -586,7 +701,11 @@ function resizeBidQuoteToBudget(
   return { quote: resizedQuote, resized: true };
 }
 
-function exitOrderWouldLoseMoney(order: AlphaPaperOrder, state: AlphaBotState, config: AlphaConfig): boolean {
+function exitOrderWouldLoseMoney(
+  order: AlphaPaperOrder,
+  state: AlphaBotState,
+  config: AlphaConfig,
+): boolean {
   if (order.source !== "inventory_exit" || order.side !== "ask") return false;
   const position = getPosition(state, order.marketAppId);
   const averageCost = order.outcome === "YES" ? position?.avgYesCost : position?.avgNoCost;
@@ -594,7 +713,11 @@ function exitOrderWouldLoseMoney(order: AlphaPaperOrder, state: AlphaBotState, c
   return order.price < averageCost + config.spreadExitEdgeCents / 100;
 }
 
-function controlledUnderwaterExitAllowed(order: AlphaPaperOrder, state: AlphaBotState, config: AlphaConfig): boolean {
+function controlledUnderwaterExitAllowed(
+  order: AlphaPaperOrder,
+  state: AlphaBotState,
+  config: AlphaConfig,
+): boolean {
   if (order.source !== "inventory_exit" || order.side !== "ask") return false;
   const status = controlledUnderwaterExitStatus(
     state,
@@ -642,7 +765,9 @@ async function refreshActualRewardsReceived(input: {
   if (fresh) return;
   try {
     const escrowAppIds = [
-      ...state.openOrders.filter((order) => order.liveEscrowAppId !== undefined).map((order) => order.liveEscrowAppId as number),
+      ...state.openOrders
+        .filter((order) => order.liveEscrowAppId !== undefined)
+        .map((order) => order.liveEscrowAppId as number),
       ...walletOrders.map((order) => order.escrowAppId),
     ];
     const ledger = await buildCapitalLedger({
@@ -681,7 +806,7 @@ export function realiseStaleSide(
   resolution: { isResolved?: boolean; outcome?: number },
   options?: { sustainedAbsence?: boolean },
 ): { realised: number; note: string; allowMutate: boolean; realisePnl: boolean } {
-  const avgCost = outcome === "YES" ? position.avgYesCost ?? 0 : position.avgNoCost ?? 0;
+  const avgCost = outcome === "YES" ? (position.avgYesCost ?? 0) : (position.avgNoCost ?? 0);
   const cost = shares * avgCost;
   if (resolution.isResolved !== true) {
     if (options?.sustainedAbsence) {
@@ -700,7 +825,9 @@ export function realiseStaleSide(
     };
   }
   if (resolution.outcome === 1 || resolution.outcome === 0) {
-    const sideWon = (resolution.outcome === 1 && outcome === "YES") || (resolution.outcome === 0 && outcome === "NO");
+    const sideWon =
+      (resolution.outcome === 1 && outcome === "YES") ||
+      (resolution.outcome === 0 && outcome === "NO");
     const proceeds = sideWon ? shares : 0;
     return {
       realised: proceeds - cost,
@@ -744,7 +871,10 @@ async function reconcilePositions(input: {
 
   const migrated = migratePositionsToAppIdKeys(state);
   if (migrated > 0) {
-    actions.push({ kind: "skip", message: `Position reconcile: migrated ${migrated} duplicate state key(s) onto marketAppId` });
+    actions.push({
+      kind: "skip",
+      message: `Position reconcile: migrated ${migrated} duplicate state key(s) onto marketAppId`,
+    });
   }
 
   const walletByAppId = new Map<number, WalletPosition>();
@@ -757,24 +887,34 @@ async function reconcilePositions(input: {
     const wallet = appId !== undefined ? walletByAppId.get(appId) : undefined;
     const title = position.title || (appId !== undefined ? `market ${appId}` : key);
 
-    const sideState: Record<AlphaOutcome, { stateShares: number; free: number; escrow: number; unaccounted: number }> = {
+    const sideState: Record<
+      AlphaOutcome,
+      { stateShares: number; free: number; escrow: number; unaccounted: number }
+    > = {
       YES: { stateShares: position.yesShares, free: 0, escrow: 0, unaccounted: 0 },
       NO: { stateShares: position.noShares, free: 0, escrow: 0, unaccounted: 0 },
     };
     for (const outcome of ["YES", "NO"] as const) {
-      const free = (outcome === "YES" ? fromMicroUnits(wallet?.yesBalance) : fromMicroUnits(wallet?.noBalance)) ?? 0;
+      const free =
+        (outcome === "YES"
+          ? fromMicroUnits(wallet?.yesBalance)
+          : fromMicroUnits(wallet?.noBalance)) ?? 0;
       const escrow = appId !== undefined ? escrowedSellSharesFor(walletOrders, appId, outcome) : 0;
       sideState[outcome].free = free;
       sideState[outcome].escrow = escrow;
       sideState[outcome].unaccounted = sideState[outcome].stateShares - (free + escrow);
       const { stateShares } = sideState[outcome];
-      if (stateShares <= SHARE_EPSILON && free <= SHARE_EPSILON && escrow <= SHARE_EPSILON) continue;
+      if (stateShares <= SHARE_EPSILON && free <= SHARE_EPSILON && escrow <= SHARE_EPSILON)
+        continue;
       let verdict: string;
       const unaccounted = sideState[outcome].unaccounted;
       if (stateShares <= SHARE_EPSILON) {
         verdict = "wallet/escrow holds shares not tracked in bot state";
       } else if (Math.abs(unaccounted) <= SHARE_EPSILON) {
-        verdict = escrow > SHARE_EPSILON ? "fully accounted (some escrowed in open sell orders)" : "fully accounted (free wallet balance)";
+        verdict =
+          escrow > SHARE_EPSILON
+            ? "fully accounted (some escrowed in open sell orders)"
+            : "fully accounted (free wallet balance)";
       } else if (unaccounted > 0) {
         verdict = `UNACCOUNTED ${unaccounted.toFixed(6)} share(s): not in wallet or open orders`;
       } else {
@@ -788,7 +928,8 @@ async function reconcilePositions(input: {
       });
     }
 
-    const hasUnaccounted = sideState.YES.unaccounted > SHARE_EPSILON || sideState.NO.unaccounted > SHARE_EPSILON;
+    const hasUnaccounted =
+      sideState.YES.unaccounted > SHARE_EPSILON || sideState.NO.unaccounted > SHARE_EPSILON;
     if (!hasUnaccounted) {
       if ((position.unaccountedTicks ?? 0) !== 0) position.unaccountedTicks = 0;
       continue;
@@ -822,9 +963,15 @@ async function reconcilePositions(input: {
       const unaccounted = sideState[outcome].unaccounted;
       if (unaccounted <= SHARE_EPSILON) continue;
       const sustainedAbsence = resolution.isResolved !== true;
-      const { realised, note, allowMutate, realisePnl } = realiseStaleSide(position, outcome, unaccounted, resolution, {
-        sustainedAbsence,
-      });
+      const { realised, note, allowMutate, realisePnl } = realiseStaleSide(
+        position,
+        outcome,
+        unaccounted,
+        resolution,
+        {
+          sustainedAbsence,
+        },
+      );
       const accounted = sideState[outcome].free + sideState[outcome].escrow;
       if (!allowMutate) {
         actions.push({
@@ -866,7 +1013,10 @@ async function reconcilePositions(input: {
       position.unaccountedTicks = 0;
       if (position.yesShares <= SHARE_EPSILON && position.noShares <= SHARE_EPSILON) {
         delete state.positionsByMarket[key];
-        actions.push({ kind: "claim", message: `Position reconcile: pruned fully reconciled position ${title} (appId=${appId})` });
+        actions.push({
+          kind: "claim",
+          message: `Position reconcile: pruned fully reconciled position ${title} (appId=${appId})`,
+        });
       }
       await saveAlphaState(config.stateKey, state);
     }
@@ -881,7 +1031,9 @@ function addInventoryExitDiagnostics(
   marketByAppId: Map<number, AlphaMarket>,
   config: AlphaConfig,
 ): void {
-  const positions = Object.values(state.positionsByMarket).filter((position) => position.yesShares > 0 || position.noShares > 0);
+  const positions = Object.values(state.positionsByMarket).filter(
+    (position) => position.yesShares > 0 || position.noShares > 0,
+  );
   if (positions.length === 0) {
     actions.push({ kind: "skip", message: "Inventory audit: no held YES/NO shares in bot state" });
     return;
@@ -898,7 +1050,12 @@ function addInventoryExitDiagnostics(
     for (const outcome of ["YES", "NO"] as const) {
       const shares = positionShareCount(position, outcome);
       if (shares <= 0) continue;
-      const exit = quotes.find((quote) => quote.source === "inventory_exit" && quote.marketId === position.marketId && quote.outcome === outcome);
+      const exit = quotes.find(
+        (quote) =>
+          quote.source === "inventory_exit" &&
+          quote.marketId === position.marketId &&
+          quote.outcome === outcome,
+      );
       if (exit) {
         actions.push({
           kind: "skip",
@@ -930,23 +1087,35 @@ async function loadWalletOpenOrders(
     return await liveClient.getWalletOpenOrders(walletAddress);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[ghillie-live] wallet order sync via API failed; falling back to per-market reads: ${message}`);
+    console.error(
+      `[ghillie-live] wallet order sync via API failed; falling back to per-market reads: ${message}`,
+    );
     const results = await Promise.allSettled(
-      [...marketByAppId.keys()].map((marketAppId) => liveClient.getOpenOrders(marketAppId, walletAddress)),
+      [...marketByAppId.keys()].map((marketAppId) =>
+        liveClient.getOpenOrders(marketAppId, walletAddress),
+      ),
     );
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length > 0) {
       for (const failure of failures) {
         console.error(
           `[ghillie-live] per-market open order read failed: ${
-            failure.status === "rejected" ? (failure.reason instanceof Error ? failure.reason.message : String(failure.reason)) : "unknown"
+            failure.status === "rejected"
+              ? failure.reason instanceof Error
+                ? failure.reason.message
+                : String(failure.reason)
+              : "unknown"
           }`,
         );
       }
     }
-    const fulfilled = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    const fulfilled = results.flatMap((result) =>
+      result.status === "fulfilled" ? result.value : [],
+    );
     if (fulfilled.length === 0 && failures.length > 0) {
-      throw new Error("Unable to read wallet open orders from API and all per-market fallbacks failed");
+      throw new Error(
+        "Unable to read wallet open orders from API and all per-market fallbacks failed",
+      );
     }
     return fulfilled;
   }
@@ -992,11 +1161,18 @@ type LaneQueues = {
   exits: AlphaQuote[];
 };
 
-function buildLaneQueues(quotes: AlphaQuote[], state: AlphaBotState, config: AlphaConfig): LaneQueues {
+function buildLaneQueues(
+  quotes: AlphaQuote[],
+  state: AlphaBotState,
+  config: AlphaConfig,
+): LaneQueues {
   const deduped = new Map<string, AlphaQuote>();
   for (const quote of quotes) {
     const alreadyOpen = state.openOrders.some(
-      (order) => order.runMode === "live" && order.status === "open" && isEquivalentQuote(order, quote, config),
+      (order) =>
+        order.runMode === "live" &&
+        order.status === "open" &&
+        isEquivalentQuote(order, quote, config),
     );
     if (alreadyOpen) continue;
     if (quote.source !== "inventory_exit" && quote.side !== "bid") continue;
@@ -1007,17 +1183,24 @@ function buildLaneQueues(quotes: AlphaQuote[], state: AlphaBotState, config: Alp
       continue;
     }
     if (quote.source === "spread") {
-      if (spreadQuoteQuality(quote, state) > spreadQuoteQuality(previous, state)) deduped.set(key, quote);
+      if (spreadQuoteQuality(quote, state) > spreadQuoteQuality(previous, state))
+        deduped.set(key, quote);
       continue;
     }
     if (quote.notionalUsd > previous.notionalUsd) deduped.set(key, quote);
   }
 
   const all = [...deduped.values()];
-  const exits = all.filter((quote) => quote.source === "inventory_exit").sort((a, b) => b.notionalUsd - a.notionalUsd);
+  const exits = all
+    .filter((quote) => quote.source === "inventory_exit")
+    .sort((a, b) => b.notionalUsd - a.notionalUsd);
   const reward = all
     .filter((quote) => quote.source === "reward")
-    .sort((a, b) => (a.marketAppId === b.marketAppId ? b.notionalUsd - a.notionalUsd : a.marketAppId - b.marketAppId));
+    .sort((a, b) =>
+      a.marketAppId === b.marketAppId
+        ? b.notionalUsd - a.notionalUsd
+        : a.marketAppId - b.marketAppId,
+    );
   const spread = all
     .filter((quote) => quote.source === "spread")
     .sort((a, b) => spreadQuoteQuality(b, state) - spreadQuoteQuality(a, state));
@@ -1041,7 +1224,8 @@ export async function runLiveTick(
     orderbooks: scan.orderbooks.size,
   });
   if (mode === "live") validateLiveConfig(config);
-  if (!config.walletAddress) throw new Error(`${mode} requires ALPHA_WALLET_ADDRESS or mnemonic-derived address`);
+  if (!config.walletAddress)
+    throw new Error(`${mode} requires ALPHA_WALLET_ADDRESS or mnemonic-derived address`);
 
   const actions: LiveAction[] = [];
   const state = await loadAlphaState(config.stateKey, config.paperStartingBalanceUsd);
@@ -1071,7 +1255,8 @@ export async function runLiveTick(
   });
 
   const previousLiveOrders = state.openOrders.filter(
-    (order) => order.runMode === "live" && order.liveEscrowAppId !== undefined && order.status === "open",
+    (order) =>
+      order.runMode === "live" && order.liveEscrowAppId !== undefined && order.status === "open",
   );
   let walletOrders: OpenOrder[] = [];
   try {
@@ -1085,9 +1270,20 @@ export async function runLiveTick(
     return finalLiveTickResult(liveClient, config, actions, state, { refreshBalances: false });
   }
   logLiveMemory("after_wallet_open_orders", { walletOrders: walletOrders.length });
-  const { synced: syncedLiveOrders, closedOrders } = mergeLiveOrdersFromWallet(state, walletOrders, marketByAppId);
-  actions.push({ kind: "skip", message: `Synced ${syncedLiveOrders} open live order(s) from wallet` });
-  logLiveMemory("after_merge_live_orders", { syncedLiveOrders, closedOrders: closedOrders.length, stateOpenOrders: state.openOrders.length });
+  const { synced: syncedLiveOrders, closedOrders } = mergeLiveOrdersFromWallet(
+    state,
+    walletOrders,
+    marketByAppId,
+  );
+  actions.push({
+    kind: "skip",
+    message: `Synced ${syncedLiveOrders} open live order(s) from wallet`,
+  });
+  logLiveMemory("after_merge_live_orders", {
+    syncedLiveOrders,
+    closedOrders: closedOrders.length,
+    stateOpenOrders: state.openOrders.length,
+  });
 
   state.liveFillCursorByEscrow ??= {};
   state.liveFillEvents ??= [];
@@ -1170,7 +1366,10 @@ export async function runLiveTick(
     if (positionsSynced) {
       const migrated = migratePositionsToAppIdKeys(state);
       if (migrated > 0) {
-        actions.push({ kind: "skip", message: `Migrated ${migrated} position key(s) onto marketAppId` });
+        actions.push({
+          kind: "skip",
+          message: `Migrated ${migrated} position key(s) onto marketAppId`,
+        });
       }
       const inventorySnapshot = buildInventorySnapshot(rawWalletPositions, walletOrders);
       const syncedPositions = syncPositionsFromInventory(state, inventorySnapshot, marketByAppId);
@@ -1205,12 +1404,26 @@ export async function runLiveTick(
       })),
     );
     actions.push(
-      ...(await runResolvedClaimLane({ liveClient, config, mode, walletPositions: rawWalletPositions, state })),
+      ...(await runResolvedClaimLane({
+        liveClient,
+        config,
+        mode,
+        walletPositions: rawWalletPositions,
+        state,
+      })),
     );
   }
   logLiveMemory("after_recycling_lanes", { actions: actions.length });
   if (positionsSynced) {
-    await reconcilePositions({ liveClient, config, mode, state, walletPositions: rawWalletPositions, walletOrders, actions });
+    await reconcilePositions({
+      liveClient,
+      config,
+      mode,
+      state,
+      walletPositions: rawWalletPositions,
+      walletOrders,
+      actions,
+    });
   }
   logLiveMemory("after_position_reconcile", {
     positions: Object.keys(state.positionsByMarket).length,
@@ -1221,23 +1434,38 @@ export async function runLiveTick(
     orderbooks: scan.orderbooks,
     walletAddress: config.walletAddress,
   });
-  logLiveMemory("after_reward_accrual", { estimatedRewardsUsd: state.estimatedRewardsUsd.toFixed(6) });
-  await refreshActualRewardsReceived({ config, mode, state, marketAppIds: [...marketByAppId.keys()], walletOrders, actions });
+  logLiveMemory("after_reward_accrual", {
+    estimatedRewardsUsd: state.estimatedRewardsUsd.toFixed(6),
+  });
+  await refreshActualRewardsReceived({
+    config,
+    mode,
+    state,
+    marketAppIds: [...marketByAppId.keys()],
+    walletOrders,
+    actions,
+  });
   logLiveMemory("after_actual_reward_refresh", {
     rewardsReceivedUsd: state.capitalLedger?.rewardsReceivedUsd?.toFixed(6),
     actions: actions.length,
   });
   updateUnrealisedPnl(state, scan.orderbooks);
   logLiveMemory("after_unrealised_pnl", { unrealisedPnl: state.unrealisedPnl.toFixed(6) });
-  const spreadStatsUpdated = shouldTrackSpreadStats(config) ? updateSpreadMarketStats(state, scan, marketByAppId, config) : 0;
+  const spreadStatsUpdated = shouldTrackSpreadStats(config)
+    ? updateSpreadMarketStats(state, scan, marketByAppId, config)
+    : 0;
   actions.push({
     kind: "skip",
     message: shouldTrackSpreadStats(config)
       ? `Spread guardrails: updated ${spreadStatsUpdated} market health observation(s)`
       : "Spread guardrails disabled; skipped market health stats update",
   });
-  logLiveMemory("after_spread_stats", { spreadStatsUpdated, spreadStats: Object.keys(state.spreadStatsByMarket).length });
-  const allExecutionLanesDisabled = !config.enableRewardLane && !config.enableSpreadLane && !config.enableParityLane;
+  logLiveMemory("after_spread_stats", {
+    spreadStatsUpdated,
+    spreadStats: Object.keys(state.spreadStatsByMarket).length,
+  });
+  const allExecutionLanesDisabled =
+    !config.enableRewardLane && !config.enableSpreadLane && !config.enableParityLane;
   if (allExecutionLanesDisabled) {
     actions.push({
       kind: "skip",
@@ -1257,7 +1485,10 @@ export async function runLiveTick(
       const rejection = spreadEntryRejection(quote, state, config);
       if (rejection) {
         blockedSpreadEntries += 1;
-        actions.push({ kind: "skip", message: `Spread guardrail blocked ${quote.title} ${quote.outcome}: ${rejection}` });
+        actions.push({
+          kind: "skip",
+          message: `Spread guardrail blocked ${quote.title} ${quote.outcome}: ${rejection}`,
+        });
         continue;
       }
       quotes.push(quote);
@@ -1285,7 +1516,9 @@ export async function runLiveTick(
   logLiveMemory("after_intended_quote_map", { intendedQuotes: intendedQuoteByKey.size });
 
   const retainedRewardContracts = rewardContractsByMarket(state);
-  for (const order of state.openOrders.filter((candidate) => candidate.runMode === "live" && candidate.status === "open")) {
+  for (const order of state.openOrders.filter(
+    (candidate) => candidate.runMode === "live" && candidate.status === "open",
+  )) {
     const escrowAppId = order.liveEscrowAppId;
     if (escrowAppId === undefined) continue;
     const market = marketByAppId.get(order.marketAppId);
@@ -1352,7 +1585,11 @@ export async function runLiveTick(
         : intended
           ? `current quote moved ${quoteDeltaCents(order, intended).toFixed(2)}c`
           : "market no longer has a qualifying quote";
-    if (order.source === "reward" && order.side === "bid" && ageSeconds < config.rewardMinDwellSeconds) {
+    if (
+      order.source === "reward" &&
+      order.side === "bid" &&
+      ageSeconds < config.rewardMinDwellSeconds
+    ) {
       if (inRewardZone && !rewardShouldDrop) continue;
       actions.push({
         kind: "skip",
@@ -1360,7 +1597,8 @@ export async function runLiveTick(
       });
     }
     if (exitOrderWouldLoseMoney(order, state, config)) {
-      const intendedSizeMismatch = intended !== undefined && !isEquivalentQuote(order, intended, config);
+      const intendedSizeMismatch =
+        intended !== undefined && !isEquivalentQuote(order, intended, config);
       if (controlledUnderwaterExitAllowed(order, state, config) && !intendedSizeMismatch) {
         actions.push({
           kind: "skip",
@@ -1381,7 +1619,11 @@ export async function runLiveTick(
           message: `Inventory exit escrowAppId=${escrowAppId} is below tracked cost plus ${config.spreadExitEdgeCents.toFixed(2)}c; allowing cancellation`,
         });
       }
-    } else if (order.source === "inventory_exit" && order.side === "ask" && orderAgeSeconds(order) < config.spreadExitMinDwellSeconds) {
+    } else if (
+      order.source === "inventory_exit" &&
+      order.side === "ask" &&
+      orderAgeSeconds(order) < config.spreadExitMinDwellSeconds
+    ) {
       if (intended !== undefined && !isEquivalentQuote(order, intended, config)) {
         actions.push({
           kind: "skip",
@@ -1395,7 +1637,11 @@ export async function runLiveTick(
         continue;
       }
     }
-    if (order.source === "spread" && order.side === "bid" && orderAgeSeconds(order) < config.spreadEntryMinDwellSeconds) {
+    if (
+      order.source === "spread" &&
+      order.side === "bid" &&
+      orderAgeSeconds(order) < config.spreadEntryMinDwellSeconds
+    ) {
       if (config.enableSpreadLane && config.enableSpreadCapture) {
         actions.push({
           kind: "skip",
@@ -1409,7 +1655,10 @@ export async function runLiveTick(
       });
     }
     if (mode === "live-dry-run") {
-      actions.push({ kind: "cancel", message: `Would cancel live order escrowAppId=${escrowAppId}; ${reason}` });
+      actions.push({
+        kind: "cancel",
+        message: `Would cancel live order escrowAppId=${escrowAppId}; ${reason}`,
+      });
       continue;
     }
     try {
@@ -1424,13 +1673,19 @@ export async function runLiveTick(
         decrementRewardContracts(retainedRewardContracts, order);
         state.cancelledOrders.push({ ...order });
         state.strategyStats.liveOrdersCancelled += 1;
-        actions.push({ kind: "cancel", message: `Cancelled live order escrowAppId=${escrowAppId}; ${reason}` });
+        actions.push({
+          kind: "cancel",
+          message: `Cancelled live order escrowAppId=${escrowAppId}; ${reason}`,
+        });
         await saveAlphaState(config.stateKey, state);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[ghillie-live] cancel failed escrowAppId=${escrowAppId}: ${message}`);
-      actions.push({ kind: "skip", message: `Cancel failed escrowAppId=${escrowAppId}: ${message}` });
+      actions.push({
+        kind: "skip",
+        message: `Cancel failed escrowAppId=${escrowAppId}: ${message}`,
+      });
     }
   }
   state.openOrders = state.openOrders.filter((order) => order.status === "open");
@@ -1451,12 +1706,18 @@ export async function runLiveTick(
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[ghillie-live] tick aborted during wallet balance sync: ${message}`);
     if (mode === "live") {
-      actions.push({ kind: "skip", message: `Tick aborted safely: wallet balance sync failed: ${message}` });
+      actions.push({
+        kind: "skip",
+        message: `Tick aborted safely: wallet balance sync failed: ${message}`,
+      });
       state.strategyStats.lastRunMode = mode;
       await saveAlphaState(config.stateKey, state);
       return finalLiveTickResult(liveClient, config, actions, state, { refreshBalances: false });
     }
-    actions.push({ kind: "skip", message: `Wallet balance sync failed; dry-run bid budget checks disabled: ${message}` });
+    actions.push({
+      kind: "skip",
+      message: `Wallet balance sync failed; dry-run bid budget checks disabled: ${message}`,
+    });
   }
   logLiveMemory("after_wallet_balances", {
     walletUsdcBalanceUsd: walletUsdcBalanceUsd?.toFixed(6),
@@ -1491,7 +1752,8 @@ export async function runLiveTick(
   const spreadQueueCap = Math.max(0, config.spreadMaxLiveOpenOrders - openSpreadEntryOrders);
   const heldInventoryNotionalUsd = getInventoryNotionalUsd(state);
   const inventoryGovernorActive =
-    config.maxInventoryNotionalUsd > 0 && heldInventoryNotionalUsd >= config.maxInventoryNotionalUsd;
+    config.maxInventoryNotionalUsd > 0 &&
+    heldInventoryNotionalUsd >= config.maxInventoryNotionalUsd;
   if (inventoryGovernorActive) {
     actions.push({
       kind: "skip",
@@ -1502,12 +1764,18 @@ export async function runLiveTick(
   }
   const pendingExitSlots = Math.min(config.spreadExitSlotReserve, laneQueues.exits.length);
   if (pendingExitSlots > 0) {
-    actions.push({ kind: "skip", message: `Prioritising ${pendingExitSlots} inventory exit(s) ahead of new entries` });
+    actions.push({
+      kind: "skip",
+      message: `Prioritising ${pendingExitSlots} inventory exit(s) ahead of new entries`,
+    });
   }
   if (rewardQueueCap === 0 && spreadQueueCap === 0 && laneQueues.exits.length === 0) {
     actions.push({ kind: "skip", message: "No reward or spread lane order slots available" });
     if (mode === "live") await saveAlphaState(config.stateKey, state);
-    return finalLiveTickResult(liveClient, config, actions, state, { walletUsdcBalanceUsd, walletAlgoBalance });
+    return finalLiveTickResult(liveClient, config, actions, state, {
+      walletUsdcBalanceUsd,
+      walletAlgoBalance,
+    });
   }
   const placementQueue: AlphaQuote[] = [];
   const added = new Set<string>();
@@ -1572,156 +1840,189 @@ export async function runLiveTick(
   let reportedBidBudgetDepleted = false;
   const amarokRuntime = mode === "live" ? createAmarokRuntime(config) : undefined;
   try {
-  for (const quote of placementQueue) {
-    let quoteToPlace = quote;
-    let pendingQuote = quote;
-    const removePendingQuote = () => replacePendingRewardContracts(pendingRewardContractsByMarket, pendingQuote);
-    const replacePendingQuote = (next: AlphaQuote) => {
-      replacePendingRewardContracts(pendingRewardContractsByMarket, pendingQuote, next);
-      pendingQuote = next;
-    };
-    if ((mode === "live" || mode === "live-dry-run") && quoteToPlace.side === "bid") {
-      if (remainingLiveBidUsdc === undefined) {
-        actions.push({ kind: "skip", message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: wallet USDC unavailable; skipping live bid placement` });
-        removePendingQuote();
-        continue;
-      }
-      const resized = resizeBidQuoteToBudget(quoteToPlace, remainingLiveBidUsdc, config);
-      if (!resized.quote) {
-        if (remainingLiveBidUsdc <= 0.000001) {
-          if (!reportedBidBudgetDepleted) {
-            actions.push({
-              kind: "skip",
-              message: `Bid budget depleted; skipping remaining bid candidates (lane minimums start at $${quoteMinNotionalUsd(
-                quoteToPlace,
-                config,
-              ).toFixed(2)})`,
-            });
-            reportedBidBudgetDepleted = true;
-          }
+    for (const quote of placementQueue) {
+      let quoteToPlace = quote;
+      let pendingQuote = quote;
+      const removePendingQuote = () =>
+        replacePendingRewardContracts(pendingRewardContractsByMarket, pendingQuote);
+      const replacePendingQuote = (next: AlphaQuote) => {
+        replacePendingRewardContracts(pendingRewardContractsByMarket, pendingQuote, next);
+        pendingQuote = next;
+      };
+      if ((mode === "live" || mode === "live-dry-run") && quoteToPlace.side === "bid") {
+        if (remainingLiveBidUsdc === undefined) {
+          actions.push({
+            kind: "skip",
+            message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: wallet USDC unavailable; skipping live bid placement`,
+          });
           removePendingQuote();
           continue;
         }
+        const resized = resizeBidQuoteToBudget(quoteToPlace, remainingLiveBidUsdc, config);
+        if (!resized.quote) {
+          if (remainingLiveBidUsdc <= 0.000001) {
+            if (!reportedBidBudgetDepleted) {
+              actions.push({
+                kind: "skip",
+                message: `Bid budget depleted; skipping remaining bid candidates (lane minimums start at $${quoteMinNotionalUsd(
+                  quoteToPlace,
+                  config,
+                ).toFixed(2)})`,
+              });
+              reportedBidBudgetDepleted = true;
+            }
+            removePendingQuote();
+            continue;
+          }
+          actions.push({
+            kind: "skip",
+            message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: ${resized.reason ?? "insufficient wallet USDC for buffered order placement"}`,
+          });
+          removePendingQuote();
+          continue;
+        }
+        if (resized.resized) {
+          quoteToPlace = resized.quote;
+          replacePendingQuote(quoteToPlace);
+          actions.push({
+            kind: "skip",
+            message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: resized to $${quoteToPlace.notionalUsd.toFixed(
+              2,
+            )} to fit wallet USDC ${remainingLiveBidUsdc.toFixed(2)} with ${(config.liveBidUsdcBufferBps / 100).toFixed(2)}% buffer`,
+          });
+        }
+      }
+      const supportedRewardContracts =
+        (selectedRewardContractsByMarket.get(quoteToPlace.marketAppId) ?? 0) +
+        (pendingRewardContractsByMarket.get(quoteToPlace.marketAppId) ?? 0);
+      if (
+        quoteToPlace.source === "reward" &&
+        quoteToPlace.rewardMinContracts !== undefined &&
+        supportedRewardContracts < quoteToPlace.rewardMinContracts
+      ) {
         actions.push({
           kind: "skip",
-          message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: ${resized.reason ?? "insufficient wallet USDC for buffered order placement"}`,
+          message: `${quoteToPlace.title} aggregate reward contracts ${supportedRewardContracts.toFixed(6)} below minimum ${quoteToPlace.rewardMinContracts.toFixed(
+            6,
+          )}`,
         });
         removePendingQuote();
         continue;
       }
-      if (resized.resized) {
-        quoteToPlace = resized.quote;
-        replacePendingQuote(quoteToPlace);
+      const risk = checkQuoteRisk(quoteToPlace, state, config, mode);
+      if (!risk.allowed) {
         actions.push({
           kind: "skip",
-          message: `${quoteToPlace.title} ${quoteToPlace.outcome} bid: resized to $${quoteToPlace.notionalUsd.toFixed(
+          message: `${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side}: ${risk.reason}`,
+        });
+        removePendingQuote();
+        continue;
+      }
+      if (mode === "live-dry-run") {
+        removePendingQuote();
+        if (quoteToPlace.side === "bid" && remainingLiveBidUsdc !== undefined) {
+          remainingLiveBidUsdc = Math.max(
+            0,
+            remainingLiveBidUsdc - requiredBidUsdc(quoteToPlace, config),
+          );
+        }
+        if (quoteToPlace.rewardEligible) {
+          addRewardContracts(
+            selectedRewardContractsByMarket,
+            quoteToPlace.marketAppId,
+            quoteRewardContracts(quoteToPlace),
+          );
+        }
+        actions.push({
+          kind: "place",
+          message: `Would place ${quoteToPlace.source} ${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side} ${quoteToPlace.price.toFixed(3)} size $${quoteToPlace.notionalUsd.toFixed(
             2,
-          )} to fit wallet USDC ${remainingLiveBidUsdc.toFixed(2)} with ${(config.liveBidUsdcBufferBps / 100).toFixed(2)}% buffer`,
+          )} / ${quoteToPlace.sizeShares.toFixed(6)} shares; ${quoteToPlace.reason}`,
+        });
+        continue;
+      }
+      if (quoteToPlace.side === "ask" && quoteToPlace.source !== "inventory_exit") {
+        actions.push({
+          kind: "skip",
+          message: `${quoteToPlace.title} ${quoteToPlace.outcome} ask skipped unless it is an inventory exit`,
+        });
+        removePendingQuote();
+        continue;
+      }
+      removePendingQuote();
+      try {
+        if (!amarokRuntime || !config.walletAddress) {
+          throw new Error("ALPHA_WALLET_MNEMONIC is required to place via Amarok");
+        }
+        const quoteResult = await amarokRuntime.client.getExecutionQuote(config.walletAddress, [
+          {
+            shapeKey: "alpha_place_limit_order",
+            input: {
+              marketAppId: quoteToPlace.marketAppId,
+              outcome: quoteToPlace.outcome,
+              side: quoteToPlace.side,
+              price: quoteToPlace.price,
+              sizeShares: quoteToPlace.sizeShares,
+            },
+          },
+        ]);
+        const parsed = parseExecutionQuotePayload(quoteResult.data);
+        const result = await signAndSubmitUnsignedGroup({
+          wallet: amarokRuntime.wallet,
+          algodServer: config.algodServer,
+          algodToken: config.algodToken,
+          unsignedTxnsBase64: parsed.unsignedTxnsBase64,
+          userSignIndexes: parsed.userSignIndexes,
+          knownEscrowAppId: parsed.escrowAppId,
+          createEscrowIndex: parsed.createEscrowIndex,
+        });
+        const tracked = toTrackedLiveOrder(quoteToPlace, result);
+        if (tracked.status === "open") {
+          state.openOrders.push(tracked);
+        }
+        const placeFill = buildPlaceTimeFillEvent({
+          order: tracked,
+          escrowAppId: result.escrowAppId,
+          matchedShares: result.matchedQuantity ?? 0,
+          matchedPrice: result.matchedPrice,
+        });
+        if (placeFill) {
+          const fillResult = applyLiveFillEvents(state, [placeFill])[0];
+          if (fillResult?.applied) actions.push({ kind: "skip", message: fillResult.message });
+        }
+        state.strategyStats.liveOrdersPlaced += 1;
+        if (quoteToPlace.side === "bid" && remainingLiveBidUsdc !== undefined) {
+          remainingLiveBidUsdc = Math.max(
+            0,
+            remainingLiveBidUsdc - requiredBidUsdc(quoteToPlace, config),
+          );
+        }
+        if (quoteToPlace.rewardEligible) {
+          addRewardContracts(
+            selectedRewardContractsByMarket,
+            quoteToPlace.marketAppId,
+            quoteRewardContracts(quoteToPlace),
+          );
+        }
+        actions.push({
+          kind: "place",
+          message: `Placed ${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side} escrowAppId=${result.escrowAppId}`,
+        });
+        await saveAlphaState(config.stateKey, state);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[ghillie-live] place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}`,
+        );
+        if (quoteToPlace.side === "bid" && message.includes("underflow on subtracting")) {
+          remainingLiveBidUsdc = 0;
+        }
+        actions.push({
+          kind: "skip",
+          message: `Place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}`,
         });
       }
     }
-    const supportedRewardContracts =
-      (selectedRewardContractsByMarket.get(quoteToPlace.marketAppId) ?? 0) + (pendingRewardContractsByMarket.get(quoteToPlace.marketAppId) ?? 0);
-    if (
-      quoteToPlace.source === "reward" &&
-      quoteToPlace.rewardMinContracts !== undefined &&
-      supportedRewardContracts < quoteToPlace.rewardMinContracts
-    ) {
-      actions.push({
-        kind: "skip",
-        message: `${quoteToPlace.title} aggregate reward contracts ${supportedRewardContracts.toFixed(6)} below minimum ${quoteToPlace.rewardMinContracts.toFixed(
-          6,
-        )}`,
-      });
-      removePendingQuote();
-      continue;
-    }
-    const risk = checkQuoteRisk(quoteToPlace, state, config, mode);
-    if (!risk.allowed) {
-      actions.push({ kind: "skip", message: `${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side}: ${risk.reason}` });
-      removePendingQuote();
-      continue;
-    }
-    if (mode === "live-dry-run") {
-      removePendingQuote();
-      if (quoteToPlace.side === "bid" && remainingLiveBidUsdc !== undefined) {
-        remainingLiveBidUsdc = Math.max(0, remainingLiveBidUsdc - requiredBidUsdc(quoteToPlace, config));
-      }
-      if (quoteToPlace.rewardEligible) {
-        addRewardContracts(selectedRewardContractsByMarket, quoteToPlace.marketAppId, quoteRewardContracts(quoteToPlace));
-      }
-      actions.push({
-        kind: "place",
-        message: `Would place ${quoteToPlace.source} ${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side} ${quoteToPlace.price.toFixed(3)} size $${quoteToPlace.notionalUsd.toFixed(
-          2,
-        )} / ${quoteToPlace.sizeShares.toFixed(6)} shares; ${quoteToPlace.reason}`,
-      });
-      continue;
-    }
-    if (quoteToPlace.side === "ask" && quoteToPlace.source !== "inventory_exit") {
-      actions.push({ kind: "skip", message: `${quoteToPlace.title} ${quoteToPlace.outcome} ask skipped unless it is an inventory exit` });
-      removePendingQuote();
-      continue;
-    }
-    removePendingQuote();
-    try {
-      if (!amarokRuntime || !config.walletAddress) {
-        throw new Error("ALPHA_WALLET_MNEMONIC is required to place via Amarok");
-      }
-      const quoteResult = await amarokRuntime.client.getExecutionQuote(config.walletAddress, [
-        {
-          shapeKey: "alpha_place_limit_order",
-          input: {
-            marketAppId: quoteToPlace.marketAppId,
-            outcome: quoteToPlace.outcome,
-            side: quoteToPlace.side,
-            price: quoteToPlace.price,
-            sizeShares: quoteToPlace.sizeShares,
-          },
-        },
-      ]);
-      const parsed = parseExecutionQuotePayload(quoteResult.data);
-      const result = await signAndSubmitUnsignedGroup({
-        wallet: amarokRuntime.wallet,
-        algodServer: config.algodServer,
-        algodToken: config.algodToken,
-        unsignedTxnsBase64: parsed.unsignedTxnsBase64,
-        userSignIndexes: parsed.userSignIndexes,
-        knownEscrowAppId: parsed.escrowAppId,
-        createEscrowIndex: parsed.createEscrowIndex,
-      });
-      const tracked = toTrackedLiveOrder(quoteToPlace, result);
-      if (tracked.status === "open") {
-        state.openOrders.push(tracked);
-      }
-      const placeFill = buildPlaceTimeFillEvent({
-        order: tracked,
-        escrowAppId: result.escrowAppId,
-        matchedShares: result.matchedQuantity ?? 0,
-        matchedPrice: result.matchedPrice,
-      });
-      if (placeFill) {
-        const fillResult = applyLiveFillEvents(state, [placeFill])[0];
-        if (fillResult?.applied) actions.push({ kind: "skip", message: fillResult.message });
-      }
-      state.strategyStats.liveOrdersPlaced += 1;
-      if (quoteToPlace.side === "bid" && remainingLiveBidUsdc !== undefined) {
-        remainingLiveBidUsdc = Math.max(0, remainingLiveBidUsdc - requiredBidUsdc(quoteToPlace, config));
-      }
-      if (quoteToPlace.rewardEligible) {
-        addRewardContracts(selectedRewardContractsByMarket, quoteToPlace.marketAppId, quoteRewardContracts(quoteToPlace));
-      }
-      actions.push({ kind: "place", message: `Placed ${quoteToPlace.title} ${quoteToPlace.outcome} ${quoteToPlace.side} escrowAppId=${result.escrowAppId}` });
-      await saveAlphaState(config.stateKey, state);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[ghillie-live] place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}`);
-      if (quoteToPlace.side === "bid" && message.includes("underflow on subtracting")) {
-        remainingLiveBidUsdc = 0;
-      }
-      actions.push({ kind: "skip", message: `Place failed ${quoteToPlace.title} ${quoteToPlace.outcome}: ${message}` });
-    }
-  }
   } finally {
     await amarokRuntime?.close();
   }
@@ -1732,5 +2033,8 @@ export async function runLiveTick(
   state.strategyStats.lastRunMode = mode;
   if (mode === "live") await saveAlphaState(config.stateKey, state);
   logLiveMemory("after_final_state_save", { openOrders: state.openOrders.length });
-  return finalLiveTickResult(liveClient, config, actions, state, { walletUsdcBalanceUsd, walletAlgoBalance });
+  return finalLiveTickResult(liveClient, config, actions, state, {
+    walletUsdcBalanceUsd,
+    walletAlgoBalance,
+  });
 }
