@@ -1,6 +1,6 @@
-import { createBotStateStore, type BotStateStore } from "../integrations/storage/botStateStore.js";
-import { migratePositionsToAppIdKeys } from "./inventoryView.js";
+import { type BotStateStore, createBotStateStore } from "../integrations/storage/botStateStore.js";
 import type { AlphaBotState } from "./alphaTypes.js";
+import { migratePositionsToAppIdKeys } from "./inventoryView.js";
 
 const MAX_HISTORY = 500;
 

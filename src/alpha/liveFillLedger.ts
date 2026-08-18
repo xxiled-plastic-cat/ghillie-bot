@@ -1,8 +1,8 @@
 import type { OpenOrder } from "@alpha-arcade/sdk";
 
 import { fromMicroUnits } from "./alphaClient.js";
-import { applyAskFillToPosition, applyBidFillToPosition } from "./positionAccounting.js";
 import type { AlphaBotState, AlphaPaperOrder, LiveFillEvent } from "./alphaTypes.js";
+import { applyAskFillToPosition, applyBidFillToPosition } from "./positionAccounting.js";
 
 export type { LiveFillEvent } from "./alphaTypes.js";
 
@@ -56,7 +56,9 @@ export function detectFillDeltasFromWallet(input: {
     if (escrowAppId === undefined) continue;
 
     const wallet = walletByEscrow.get(escrowAppId);
-    const filledAfter = wallet ? (fromMicroUnits(wallet.quantityFilled) ?? 0) : previous.filledShares;
+    const filledAfter = wallet
+      ? (fromMicroUnits(wallet.quantityFilled) ?? 0)
+      : previous.filledShares;
     const applied = cursorFilled(cursor, escrowAppId);
     const delta = filledAfter - applied;
     if (delta <= FILL_EPS) continue;
@@ -238,19 +240,30 @@ export function buildPlaceTimeFillEvent(input: {
   };
 }
 
-export function applyLiveFillEvent(state: AlphaBotState, event: LiveFillEvent): ApplyLiveFillResult {
+export function applyLiveFillEvent(
+  state: AlphaBotState,
+  event: LiveFillEvent,
+): ApplyLiveFillResult {
   state.liveFillEvents ??= [];
   state.liveFillCursorByEscrow ??= {};
 
   const key = escrowCursorKey(event.escrowAppId);
   const appliedCursor = state.liveFillCursorByEscrow[key] ?? 0;
   if (hasAppliedEvent(state, event.id) || appliedCursor + FILL_EPS >= event.filledSharesAfter) {
-    return { applied: false, realisedPnl: 0, message: `Live fill skipped (already applied) ${event.id}` };
+    return {
+      applied: false,
+      realisedPnl: 0,
+      message: `Live fill skipped (already applied) ${event.id}`,
+    };
   }
 
   const shares = event.shares;
   if (shares <= FILL_EPS) {
-    return { applied: false, realisedPnl: 0, message: `Live fill skipped (zero shares) ${event.id}` };
+    return {
+      applied: false,
+      realisedPnl: 0,
+      message: `Live fill skipped (zero shares) ${event.id}`,
+    };
   }
 
   const orderLike = {
@@ -267,7 +280,9 @@ export function applyLiveFillEvent(state: AlphaBotState, event: LiveFillEvent): 
     applyBidFillToPosition(state, orderLike, shares, event.price);
     if (event.source === "spread") state.strategyStats.spreadEntryFills += 1;
   } else {
-    realisedPnl = applyAskFillToPosition(state, orderLike, shares, event.price, { updateCash: false });
+    realisedPnl = applyAskFillToPosition(state, orderLike, shares, event.price, {
+      updateCash: false,
+    });
     if (event.source === "inventory_exit") {
       state.strategyStats.spreadExitFills += 1;
       state.strategyStats.spreadRealisedPnl += realisedPnl;

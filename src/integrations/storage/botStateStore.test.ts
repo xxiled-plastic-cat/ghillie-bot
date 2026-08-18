@@ -5,8 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  LocalFilesystemBotStateStore,
   isSpacesConfigured,
+  LocalFilesystemBotStateStore,
   readBotStateStoreConfigFromEnv,
 } from "./botStateStore.js";
 

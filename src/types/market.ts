@@ -1,11 +1,6 @@
 export type Timeframe = "hourly" | "daily" | "weekly" | "monthly" | "unknown";
 
-export type MarketStatus =
-  | "open"
-  | "locked"
-  | "settled"
-  | "expired"
-  | "unknown";
+export type MarketStatus = "open" | "locked" | "settled" | "expired" | "unknown";
 
 export type Market = {
   id: string;

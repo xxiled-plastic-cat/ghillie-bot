@@ -1,8 +1,14 @@
+import type { AlphaSdkClient } from "./alphaClient.js";
 import type { AlphaConfig, AlphaMode } from "./alphaConfig.js";
-import { AlphaSdkClient } from "./alphaClient.js";
-import { scanParity } from "./alphaParityScanner.js";
-import type { AlphaBotState, AlphaMarket, AlphaOrderbook, AlphaParityAttempt, AlphaParityPlan } from "./alphaTypes.js";
 import type { AlphaScanResult } from "./alphaMarketScanner.js";
+import { scanParity } from "./alphaParityScanner.js";
+import type {
+  AlphaBotState,
+  AlphaMarket,
+  AlphaOrderbook,
+  AlphaParityAttempt,
+  AlphaParityPlan,
+} from "./alphaTypes.js";
 
 type ParityAction = {
   kind: "parity" | "skip";
@@ -28,7 +34,13 @@ export type ParityExecuteResult = {
   error?: string;
 };
 
-function attempt(plan: AlphaParityPlan, mode: ParityMode, status: AlphaParityAttempt["status"], reason?: string, txIds: string[] = []): AlphaParityAttempt {
+function attempt(
+  plan: AlphaParityPlan,
+  mode: ParityMode,
+  status: AlphaParityAttempt["status"],
+  reason?: string,
+  txIds: string[] = [],
+): AlphaParityAttempt {
   return {
     ...plan,
     id: `parity:${plan.marketAppId}:${plan.type}:${Date.now()}`,
@@ -47,11 +59,21 @@ function dailyParityUsd(state: AlphaBotState): number {
     .reduce((sum, entry) => sum + entry.notionalUsd, 0);
 }
 
-function recordSkipped(state: AlphaBotState, plan: AlphaParityPlan, mode: ParityMode, reason: string): void {
+function recordSkipped(
+  state: AlphaBotState,
+  plan: AlphaParityPlan,
+  mode: ParityMode,
+  reason: string,
+): void {
   state.parityAttempts.push(attempt(plan, mode, "skipped", reason));
 }
 
-function recordExecuted(state: AlphaBotState, plan: AlphaParityPlan, mode: ParityMode, txIds: string[]): void {
+function recordExecuted(
+  state: AlphaBotState,
+  plan: AlphaParityPlan,
+  mode: ParityMode,
+  txIds: string[],
+): void {
   state.parityAttempts.push(attempt(plan, mode, "executed", undefined, txIds));
   state.strategyStats.parityTradesExecuted += 1;
   state.strategyStats.parityGrossPnl += plan.expectedGrossPnlUsd;
@@ -59,7 +81,13 @@ function recordExecuted(state: AlphaBotState, plan: AlphaParityPlan, mode: Parit
   state.strategyStats.lastParityTradeAt = new Date().toISOString();
 }
 
-function recordFailed(state: AlphaBotState, plan: AlphaParityPlan, mode: ParityMode, reason: string, txIds: string[] = []): void {
+function recordFailed(
+  state: AlphaBotState,
+  plan: AlphaParityPlan,
+  mode: ParityMode,
+  reason: string,
+  txIds: string[] = [],
+): void {
   state.parityAttempts.push(attempt(plan, mode, "failed", reason, txIds));
   state.strategyStats.parityFailedLegs += 1;
 }
@@ -177,7 +205,11 @@ async function refreshPlan(
   type: AlphaParityPlan["type"],
 ): Promise<AlphaParityPlan | undefined> {
   const book = await liveClient.getOrderbook(market);
-  const plans = scanParity([market], new Map<number, AlphaOrderbook>([[market.marketAppId, book]]), config);
+  const plans = scanParity(
+    [market],
+    new Map<number, AlphaOrderbook>([[market.marketAppId, book]]),
+    config,
+  );
   return plans.find((plan) => plan.type === type);
 }
 
@@ -251,7 +283,10 @@ async function executeBuyMerge(
   }
 
   try {
-    const merge = await liveClient.mergeShares({ marketAppId: plan.marketAppId, amountShares: plan.sizeShares });
+    const merge = await liveClient.mergeShares({
+      marketAppId: plan.marketAppId,
+      amountShares: plan.sizeShares,
+    });
     txIds.push(...merge.txIds);
     return { ok: true, txIds };
   } catch (error) {
@@ -276,7 +311,10 @@ async function executeSplitSell(
   const txIds: string[] = [];
 
   try {
-    const split = await liveClient.splitShares({ marketAppId: plan.marketAppId, amountUsd: plan.sizeShares });
+    const split = await liveClient.splitShares({
+      marketAppId: plan.marketAppId,
+      amountUsd: plan.sizeShares,
+    });
     txIds.push(...split.txIds);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -296,7 +334,10 @@ async function executeSplitSell(
   } catch (error) {
     const failedMsg = error instanceof Error ? error.message : String(error);
     try {
-      const mergeBack = await liveClient.mergeShares({ marketAppId: plan.marketAppId, amountShares: plan.sizeShares });
+      const mergeBack = await liveClient.mergeShares({
+        marketAppId: plan.marketAppId,
+        amountShares: plan.sizeShares,
+      });
       txIds.push(...mergeBack.txIds);
       const planned = planSplitSellResidual({
         marketAppId: plan.marketAppId,
@@ -358,7 +399,9 @@ export async function runParityLane(input: {
   if (!config.enableParityLane) {
     return [{ kind: "skip", message: "Parity lane disabled (ALPHA_ENABLE_PARITY_LANE=false)" }];
   }
-  const marketByAppId = new Map([...scan.markets, ...scan.rewardMarkets].map((market) => [market.marketAppId, market]));
+  const marketByAppId = new Map(
+    [...scan.markets, ...scan.rewardMarkets].map((market) => [market.marketAppId, market]),
+  );
   const plans = scanParity([...marketByAppId.values()], scan.orderbooks, config);
   const actions: ParityAction[] = [];
   if (plans.length === 0) {
@@ -366,7 +409,10 @@ export async function runParityLane(input: {
     return actions;
   }
 
-  actions.push({ kind: "parity", message: `Parity: ${plans.length} executable candidate(s) detected` });
+  actions.push({
+    kind: "parity",
+    message: `Parity: ${plans.length} executable candidate(s) detected`,
+  });
   const planWindow = plans.slice(0, Math.max(1, config.parityQueueLimit));
   for (const plan of planWindow) {
     const rejection = validatePlan(plan, state, config, walletUsdcBalanceUsd, mode === "live");
@@ -382,21 +428,30 @@ export async function runParityLane(input: {
     }
     if (!config.enableParityArb) {
       recordSkipped(state, plan, mode, "parity arb disabled");
-      actions.push({ kind: "skip", message: `Skipped parity ${plan.title}: ALPHA_ENABLE_PARITY_ARB=false` });
+      actions.push({
+        kind: "skip",
+        message: `Skipped parity ${plan.title}: ALPHA_ENABLE_PARITY_ARB=false`,
+      });
       continue;
     }
 
     const market = marketByAppId.get(plan.marketAppId);
     if (!market) {
       recordSkipped(state, plan, mode, "market metadata unavailable");
-      actions.push({ kind: "skip", message: `Skipped parity ${plan.title}: market metadata unavailable` });
+      actions.push({
+        kind: "skip",
+        message: `Skipped parity ${plan.title}: market metadata unavailable`,
+      });
       continue;
     }
     try {
       const refreshed = await refreshPlan(liveClient, market, config, plan.type);
       if (!refreshed) {
         recordSkipped(state, plan, mode, "candidate disappeared after orderbook refresh");
-        actions.push({ kind: "skip", message: `Skipped parity ${plan.title}: candidate disappeared after refresh` });
+        actions.push({
+          kind: "skip",
+          message: `Skipped parity ${plan.title}: candidate disappeared after refresh`,
+        });
         continue;
       }
       const result =
@@ -415,13 +470,10 @@ export async function runParityLane(input: {
       if (result.residual) {
         actions.push({ kind: "parity", message: describeParityResidual(result.residual) });
       }
-      // Continue the queue after failure so later candidates can still run.
-      continue;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       recordFailed(state, plan, mode, reason);
       actions.push({ kind: "skip", message: `Parity failed ${plan.title}: ${reason}` });
-      continue;
     }
   }
   return actions;

@@ -73,7 +73,7 @@ Alpha **bot state** is on DigitalOcean Spaces (or local FS fallback). Remaining 
 
 - [x] Add root [`CONTRIBUTING.md`](../CONTRIBUTING.md) (use brownie’s guide as a template)
 - [x] Cover: Node version, `npm install`, `.env.example`, dry-run defaults, never commit secrets
-- [x] PR checklist: `npm run typecheck`, `npm test`, format/lint once those exist
+- [x] PR checklist: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`
 - [x] Paid-call warning: Amarok x402 spends **mainnet USDC**; prefer unit tests over live MCP in CI
 - [x] Code of conduct link or short conduct section if publishing under an org
 - [x] Issue / PR templates (bug, feature, security contact)
@@ -108,7 +108,7 @@ Before shipping any LLM decide / research agent:
 ### 7. Repo hygiene & DX
 
 - [x] Operator `.env` cleanup guide (delete unused Div3rsaFi / `POLY_*` leftovers; keep `ALPHA_API_KEY` for venue-ops) — [QUICKSTART.md](../QUICKSTART.md)
-- [ ] Add `eslint` + `prettier` (or Biome) and wire into CI
+- [x] Add `eslint` + `prettier` (or Biome) and wire into CI
 - [x] GitHub Actions: typecheck + unit tests on PR (no live paid MCP in CI) — `.github/workflows/ci.yml`
 - [x] `QUICKSTART.md` for operators (env, Docker, dry-run, cron, Telegram, costs)
 - [ ] Decide fate of in-tree Div3rsaFi / Polymarket **code** (leave legacy, archive folder, or remove — env template already ignores them)
@@ -129,7 +129,7 @@ Before shipping any LLM decide / research agent:
 3. ~~Finish remaining prompt review notes (risk language) if shipping publicly~~ (done)
 4. ~~MIT `LICENSE` + README OSS section~~ (done; CONTRIBUTING done)
 5. ~~Naming leftovers (GitHub rename, log prefixes, dashboard branding)~~ (done)
-6. Lint / CI polish (`QUICKSTART.md` done)
+6. ~~Lint / CI polish (`QUICKSTART.md` done)~~ (Biome + CI `format:check` / lint)
 
 ---
 

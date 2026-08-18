@@ -1,10 +1,9 @@
 import type { WalletPosition } from "@alpha-arcade/sdk";
-
+import { type AlphaSdkClient, fromMicroUnits, type MarketChainStatus } from "./alphaClient.js";
 import type { AlphaConfig, AlphaMode } from "./alphaConfig.js";
-import { AlphaSdkClient, fromMicroUnits, type MarketChainStatus } from "./alphaClient.js";
-import { getPosition, positionKey } from "./inventoryView.js";
 import { saveAlphaState } from "./alphaStateStore.js";
 import type { AlphaBotState, AlphaPaperPosition } from "./alphaTypes.js";
+import { getPosition, positionKey } from "./inventoryView.js";
 
 type ClaimMode = Extract<AlphaMode, "live-dry-run" | "live">;
 
@@ -34,7 +33,11 @@ function findStatePositionEntry(
  * For any other (e.g. voided) outcome we cannot reliably value the redemption,
  * so we still claim but leave realised PnL untouched.
  */
-export function usdcForSide(outcome: number | undefined, side: "YES" | "NO", shares: number): number | undefined {
+export function usdcForSide(
+  outcome: number | undefined,
+  side: "YES" | "NO",
+  shares: number,
+): number | undefined {
   if (outcome === 1) return side === "YES" ? shares : 0;
   if (outcome === 0) return side === "NO" ? shares : 0;
   return undefined;
@@ -47,12 +50,19 @@ function describeOutcome(outcome: number | undefined): string {
   return "outcome unknown";
 }
 
-function describeSideResult(outcome: number | undefined, side: "YES" | "NO", shares: number, avgCost: number): string {
+function describeSideResult(
+  outcome: number | undefined,
+  side: "YES" | "NO",
+  shares: number,
+  avgCost: number,
+): string {
   const usdc = usdcForSide(outcome, side, shares);
-  if (usdc === undefined) return `${shares.toFixed(6)} ${side} share(s); outcome unknown, will claim anyway`;
+  if (usdc === undefined)
+    return `${shares.toFixed(6)} ${side} share(s); outcome unknown, will claim anyway`;
   const pnl = usdc - shares * avgCost;
   const pnlLabel = pnl >= 0 ? `+$${pnl.toFixed(4)}` : `-$${Math.abs(pnl).toFixed(4)}`;
-  if (usdc === 0) return `${shares.toFixed(6)} ${side} share(s); LOSING side → $0.00 USDC (${pnlLabel})`;
+  if (usdc === 0)
+    return `${shares.toFixed(6)} ${side} share(s); LOSING side → $0.00 USDC (${pnlLabel})`;
   return `${shares.toFixed(6)} ${side} share(s); WINNING side → ~$${usdc.toFixed(2)} USDC (${pnlLabel})`;
 }
 
@@ -70,10 +80,12 @@ export function applyClaimedFreeSharesToState(
 ): { realised?: number; remaining: number } {
   const entry = findStatePositionEntry(state, marketAppId);
   if (!entry || freeSharesClaimed <= CLAIM_EPS) {
-    return { remaining: entry ? (side === "YES" ? entry.position.yesShares : entry.position.noShares) : 0 };
+    return {
+      remaining: entry ? (side === "YES" ? entry.position.yesShares : entry.position.noShares) : 0,
+    };
   }
   const { position, key } = entry;
-  const avgCost = side === "YES" ? position.avgYesCost ?? 0 : position.avgNoCost ?? 0;
+  const avgCost = side === "YES" ? (position.avgYesCost ?? 0) : (position.avgNoCost ?? 0);
   const usdc = usdcForSide(outcome, side, freeSharesClaimed);
   let realised: number | undefined;
   if (usdc !== undefined) {
@@ -110,7 +122,9 @@ export async function runResolvedClaimLane(input: {
 }): Promise<ClaimAction[]> {
   const { liveClient, config, mode, walletPositions, state } = input;
   if (!config.enableResolvedClaim) {
-    return [{ kind: "skip", message: "Resolved claim disabled (ALPHA_ENABLE_RESOLVED_CLAIM=false)" }];
+    return [
+      { kind: "skip", message: "Resolved claim disabled (ALPHA_ENABLE_RESOLVED_CLAIM=false)" },
+    ];
   }
   const actions: ClaimAction[] = [];
 
@@ -159,7 +173,11 @@ export async function runResolvedClaimLane(input: {
 
     for (const { side, assetId, shares } of sides) {
       const entry = findStatePositionEntry(state, position.marketAppId);
-      const avgCost = entry ? (side === "YES" ? entry.position.avgYesCost ?? 0 : entry.position.avgNoCost ?? 0) : 0;
+      const avgCost = entry
+        ? side === "YES"
+          ? (entry.position.avgYesCost ?? 0)
+          : (entry.position.avgNoCost ?? 0)
+        : 0;
       const sideDesc = describeSideResult(outcome, side, shares, avgCost);
 
       if (mode === "live-dry-run") {
@@ -173,7 +191,13 @@ export async function runResolvedClaimLane(input: {
 
       try {
         const result = await liveClient.claim({ marketAppId: position.marketAppId, assetId });
-        const applied = applyClaimedFreeSharesToState(state, position.marketAppId, side, shares, outcome);
+        const applied = applyClaimedFreeSharesToState(
+          state,
+          position.marketAppId,
+          side,
+          shares,
+          outcome,
+        );
         await saveAlphaState(config.stateKey, state);
         actions.push({
           kind: "claim",
@@ -183,8 +207,13 @@ export async function runResolvedClaimLane(input: {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[ghillie-live] resolved claim failed market=${position.marketAppId} side=${side}: ${message}`);
-        actions.push({ kind: "skip", message: `Resolved claim failed ${title} ${side}: ${sideDesc}; error: ${message}` });
+        console.error(
+          `[ghillie-live] resolved claim failed market=${position.marketAppId} side=${side}: ${message}`,
+        );
+        actions.push({
+          kind: "skip",
+          message: `Resolved claim failed ${title} ${side}: ${sideDesc}; error: ${message}`,
+        });
       }
     }
   }

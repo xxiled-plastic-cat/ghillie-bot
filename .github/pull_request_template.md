@@ -4,6 +4,8 @@
 
 ## Test plan
 
+- [ ] `npm run format:check`
+- [ ] `npm run lint`
 - [ ] `npm run typecheck`
 - [ ] `npm test`
 - [ ] Docs / `.env.example` updated if operator-facing

@@ -1,11 +1,15 @@
-import type { AlphaConfig } from "./alphaConfig.js";
-import type { AlphaMarket, AlphaOrderbook } from "./alphaTypes.js";
-import type { PaymentReceipt } from "../integrations/amarok/payment.js";
+import {
+  marketFromAmarok,
+  orderbookFromAmarok,
+  scanFromAmarok,
+} from "../integrations/amarok/adapters.js";
 import type { ManagedToolResult } from "../integrations/amarok/client.js";
+import type { PaymentReceipt } from "../integrations/amarok/payment.js";
 import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
-import { marketFromAmarok, orderbookFromAmarok, scanFromAmarok } from "../integrations/amarok/adapters.js";
 import { loadOperatorPreferencesFromEnv } from "../integrations/storage/operatorPreferences.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
+import type { AlphaConfig } from "./alphaConfig.js";
+import type { AlphaMarket, AlphaOrderbook } from "./alphaTypes.js";
 
 function logStartupDebug(message: string): void {
   if (!isDebugModeEnabled()) return;
@@ -60,7 +64,9 @@ export async function loadAlphaScan(
   options: LoadAlphaScanOptions = {},
 ): Promise<AlphaScanResult> {
   const startedAt = Date.now();
-  logStartupDebug(`loadAlphaScan start maxMarketsPerScan=${config.maxMarketsPerScan} mcp=${config.amarokMcpUrl}`);
+  logStartupDebug(
+    `loadAlphaScan start maxMarketsPerScan=${config.maxMarketsPerScan} mcp=${config.amarokMcpUrl}`,
+  );
 
   if (!config.walletAddress) {
     throw new Error("ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok scan");
@@ -167,21 +173,24 @@ export async function loadAlphaScan(
   }
 }
 
-export async function loadAmarokMarket(config: AlphaConfig, marketIdOrSlug: string): Promise<{
+export async function loadAmarokMarket(
+  config: AlphaConfig,
+  marketIdOrSlug: string,
+): Promise<{
   market: AlphaMarket;
   orderbook: AlphaOrderbook;
 }> {
   if (!config.walletAddress) {
-    throw new Error("ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok market lookup");
+    throw new Error(
+      "ALPHA_WALLET_ADDRESS or ALPHA_WALLET_MNEMONIC is required for Amarok market lookup",
+    );
   }
   const runtime = createAmarokRuntime(config);
   try {
     const asAppId = Number.parseInt(marketIdOrSlug, 10);
     if (Number.isFinite(asAppId) && asAppId > 0) {
       const result = await runtime.client.getMarket(config.walletAddress, asAppId);
-      const market = marketFromAmarok(
-        (result.data as { data?: unknown })?.data ?? result.data,
-      );
+      const market = marketFromAmarok((result.data as { data?: unknown })?.data ?? result.data);
       if (!market) throw new Error(`Amarok market not found: ${marketIdOrSlug}`);
       const bookRaw =
         (market.raw as { book?: unknown; orderbook?: unknown } | undefined)?.book ??

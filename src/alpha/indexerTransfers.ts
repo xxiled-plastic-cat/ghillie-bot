@@ -59,21 +59,24 @@ function parseBigIntAmount(value: unknown): bigint | undefined {
   return undefined;
 }
 
-export function collectAssetTransfers(txn: Record<string, unknown>, inheritedSender?: string): ParsedAssetTransfer[] {
+export function collectAssetTransfers(
+  txn: Record<string, unknown>,
+  inheritedSender?: string,
+): ParsedAssetTransfer[] {
   const transfers: ParsedAssetTransfer[] = [];
   const sender = typeof txn.sender === "string" ? txn.sender : inheritedSender;
-  const transfer = txn["assetTransferTransaction"];
+  const transfer = txn.assetTransferTransaction;
   if (transfer && typeof transfer === "object") {
     const payload = transfer as Record<string, unknown>;
     const parsed: ParsedAssetTransfer = {
       sender: typeof payload.sender === "string" ? payload.sender : sender,
       receiver: typeof payload.receiver === "string" ? payload.receiver : undefined,
-      assetId: parseBigIntAmount(payload["assetId"] ?? payload.assetId),
+      assetId: parseBigIntAmount(payload.assetId),
       amount: parseBigIntAmount(payload.amount),
     };
     transfers.push(parsed);
   }
-  const inner = txn["innerTxns"];
+  const inner = txn.innerTxns;
   if (Array.isArray(inner)) {
     for (const child of inner) {
       if (child && typeof child === "object") {
@@ -125,7 +128,8 @@ export async function scanWalletUsdcTransfers(
     transactionCount += transactions.length;
 
     for (const transaction of transactions as Array<Record<string, unknown>>) {
-      const round = typeof transaction.confirmedRound === "number" ? transaction.confirmedRound : undefined;
+      const round =
+        typeof transaction.confirmedRound === "number" ? transaction.confirmedRound : undefined;
       const txId = typeof transaction.id === "string" ? transaction.id : undefined;
       for (const transfer of collectAssetTransfers(transaction)) {
         if (transfer.assetId !== usdcAssetId) continue;

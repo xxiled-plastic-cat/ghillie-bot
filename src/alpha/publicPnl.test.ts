@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-
-import { buildGhilliePublicPnl } from "./publicPnl.js";
 import type { DashboardRealPnl } from "./alphaDashboardData.js";
+import { buildGhilliePublicPnl } from "./publicPnl.js";
 
 describe("buildGhilliePublicPnl", () => {
   const realPnl: DashboardRealPnl = {

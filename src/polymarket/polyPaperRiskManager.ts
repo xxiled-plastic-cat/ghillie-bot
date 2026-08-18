@@ -26,16 +26,23 @@ function openAskSize(state: PolyPaperModelState, tokenId: string): number {
     .reduce((sum, order) => sum + order.remainingSize, 0);
 }
 
-export function checkPolyPaperRisk(quote: PolyPaperQuote, state: PolyPaperModelState, config: PolyConfig): PolyPaperRiskDecision {
-  if (quote.price <= 0 || quote.price >= 1) return { allowed: false, reason: "price outside range" };
-  if (quote.size <= 0 || quote.notionalUsd <= 0) return { allowed: false, reason: "invalid size/notional" };
+export function checkPolyPaperRisk(
+  quote: PolyPaperQuote,
+  state: PolyPaperModelState,
+  config: PolyConfig,
+): PolyPaperRiskDecision {
+  if (quote.price <= 0 || quote.price >= 1)
+    return { allowed: false, reason: "price outside range" };
+  if (quote.size <= 0 || quote.notionalUsd <= 0)
+    return { allowed: false, reason: "invalid size/notional" };
   if (openOrdersForLane(state, quote.lane) >= config.paperMaxOpenOrdersPerLane) {
     return { allowed: false, reason: `${quote.lane} lane open-order cap reached` };
   }
   if (quote.side === "bid") {
     const required = quote.notionalUsd;
     const reserved = openBidExposure(state);
-    if (state.cash - reserved < required) return { allowed: false, reason: "insufficient available cash" };
+    if (state.cash - reserved < required)
+      return { allowed: false, reason: "insufficient available cash" };
     return { allowed: true, reason: "ok" };
   }
   const inventory = heldSize(state, quote.tokenId);

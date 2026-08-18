@@ -1,15 +1,11 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  GetObjectCommand,
-  S3Client,
-  type S3ClientConfig,
-} from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 
 import {
+  type BotStateStoreConfig,
   isSpacesConfigured,
   readBotStateStoreConfigFromEnv,
-  type BotStateStoreConfig,
 } from "./botStateStore.js";
 
 /** Convention path when DigitalOcean Spaces is not configured. */
@@ -153,7 +149,10 @@ function trimSlashes(value: string): string {
 
 function isErrnoNotFound(error: unknown): boolean {
   return Boolean(
-    error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT",
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "ENOENT",
   );
 }
 

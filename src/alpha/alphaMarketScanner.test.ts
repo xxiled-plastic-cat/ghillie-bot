@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-
-import type { AlphaConfig } from "./alphaConfig.js";
-import { loadAlphaScan } from "./alphaMarketScanner.js";
 import type { AmarokClient, ManagedToolResult } from "../integrations/amarok/client.js";
 import type { AmarokRuntime } from "../integrations/amarok/runtime.js";
+import type { AlphaConfig } from "./alphaConfig.js";
+import { loadAlphaScan } from "./alphaMarketScanner.js";
 
 function testConfig(overrides: Partial<AlphaConfig> = {}): AlphaConfig {
   return {
     amarokMcpUrl: "https://example.test/mcp",
     walletAddress: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
-    walletMnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    walletMnemonic:
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     enableRewardLane: true,
     enableSpreadLane: true,
     enableParityLane: false,
@@ -49,7 +49,9 @@ function mockRuntime(calls: string[]): AmarokRuntime {
     async listOpportunities() {
       calls.push("amarok_list_opportunities");
       return emptyResult({
-        data: [{ kind: "lp_reward", marketAppId: 3100000001, title: "Sample", estimatedUsdPerDay: "5" }],
+        data: [
+          { kind: "lp_reward", marketAppId: 3100000001, title: "Sample", estimatedUsdPerDay: "5" },
+        ],
       });
     },
     async listRewards() {
@@ -71,7 +73,9 @@ function mockRuntime(calls: string[]): AmarokRuntime {
 
   return {
     client,
-    wallet: { address: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ" } as AmarokRuntime["wallet"],
+    wallet: {
+      address: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ",
+    } as AmarokRuntime["wallet"],
     close: async () => client.close(),
   };
 }

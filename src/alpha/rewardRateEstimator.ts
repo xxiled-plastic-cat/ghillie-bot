@@ -1,4 +1,11 @@
-import { POOL_FALLBACK_DAILY_REWARD_SOURCE, type AlphaMarket, type AlphaOrderbook, type AlphaOutcome, type AlphaOrderSide, type AlphaPaperOrder } from "./alphaTypes.js";
+import {
+  type AlphaMarket,
+  type AlphaOrderbook,
+  type AlphaOrderSide,
+  type AlphaOutcome,
+  type AlphaPaperOrder,
+  POOL_FALLBACK_DAILY_REWARD_SOURCE,
+} from "./alphaTypes.js";
 
 /**
  * A market's daily reward in USD, but only when it is a genuine, non-zero daily
@@ -67,7 +74,9 @@ function rewardMinContracts(market: AlphaMarket | undefined, orders: AlphaPaperO
   return Math.max(
     0,
     market?.reward.minContracts ?? 0,
-    ...orders.map((order) => order.rewardMinContracts ?? 0).filter((value) => Number.isFinite(value)),
+    ...orders
+      .map((order) => order.rewardMinContracts ?? 0)
+      .filter((value) => Number.isFinite(value)),
   );
 }
 
@@ -80,16 +89,27 @@ function levelsFor(book: AlphaOrderbook, outcome: AlphaOutcome, side: AlphaOrder
   return side === "bid" ? outcomeOrders.bids : outcomeOrders.asks;
 }
 
-function insideRewardZone(price: number, midpoint: number | undefined, maxSpreadCentsValue: number): boolean {
+function insideRewardZone(
+  price: number,
+  midpoint: number | undefined,
+  maxSpreadCentsValue: number,
+): boolean {
   if (midpoint === undefined || !Number.isFinite(midpoint)) return false;
   return Math.abs(price - midpoint) * 100 <= maxSpreadCentsValue + PRICE_EPSILON;
 }
 
-function orderInsideRewardZone(order: AlphaPaperOrder, book: AlphaOrderbook, maxSpreadCentsValue: number): boolean {
+function orderInsideRewardZone(
+  order: AlphaPaperOrder,
+  book: AlphaOrderbook,
+  maxSpreadCentsValue: number,
+): boolean {
   return insideRewardZone(order.price, midpointFor(book, order.outcome), maxSpreadCentsValue);
 }
 
-function totalRewardZoneContracts(book: AlphaOrderbook, maxSpreadCentsValue: number): number | undefined {
+function totalRewardZoneContracts(
+  book: AlphaOrderbook,
+  maxSpreadCentsValue: number,
+): number | undefined {
   if (book.source === "unavailable") return undefined;
 
   let contracts = 0;
@@ -118,7 +138,8 @@ function estimateMarketRewardShare(
     .filter((order) => orderInsideRewardZone(order, book, maxSpread))
     .reduce((sum, order) => sum + order.remainingShares, 0);
   if (ownContracts <= 0) return { share: 0, ownContracts: 0, totalEligibleContracts: 0 };
-  if (ownContracts + PRICE_EPSILON < minContracts) return { share: 0, ownContracts, totalEligibleContracts: ownContracts };
+  if (ownContracts + PRICE_EPSILON < minContracts)
+    return { share: 0, ownContracts, totalEligibleContracts: ownContracts };
 
   const eligibleContracts = totalRewardZoneContracts(book, maxSpread);
   if (eligibleContracts === undefined) return undefined;
@@ -132,7 +153,10 @@ function estimateMarketRewardShare(
   };
 }
 
-export function estimateRewardRateForOrders(orders: AlphaPaperOrder[], context: RewardRateContext = {}): RewardRateEstimate {
+export function estimateRewardRateForOrders(
+  orders: AlphaPaperOrder[],
+  context: RewardRateContext = {},
+): RewardRateEstimate {
   if (orders.length === 0) {
     return {
       dailyUsd: 0,
@@ -188,7 +212,8 @@ export function estimateRewardRateForOrders(orders: AlphaPaperOrder[], context: 
     };
   }
 
-  const calibration = context.calibration !== undefined && context.calibration > 0 ? context.calibration : 1;
+  const calibration =
+    context.calibration !== undefined && context.calibration > 0 ? context.calibration : 1;
   const calibratedDailyUsd = dailyUsd * calibration;
   return {
     dailyUsd: calibratedDailyUsd,

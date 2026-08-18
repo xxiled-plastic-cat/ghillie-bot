@@ -1,12 +1,12 @@
 import type { AlphaConfig } from "./alphaConfig.js";
-import type { AlphaBotState, AlphaMarket, AlphaPaperOrder, AlphaQuote } from "./alphaTypes.js";
+import type { AlphaScanResult } from "./alphaMarketScanner.js";
 import { checkQuoteRisk } from "./alphaRiskManager.js";
 import { loadAlphaState, saveAlphaState } from "./alphaStateStore.js";
-import { detectPaperFills, cancelStalePaperOrders } from "./fillTracker.js";
+import type { AlphaBotState, AlphaMarket, AlphaPaperOrder, AlphaQuote } from "./alphaTypes.js";
+import { cancelStalePaperOrders, detectPaperFills } from "./fillTracker.js";
+import { updateUnrealisedPnl } from "./pnlTracker.js";
 import { generateQuotes } from "./quoteEngine.js";
 import { accrueEstimatedRewards } from "./rewardTracker.js";
-import { updateUnrealisedPnl } from "./pnlTracker.js";
-import type { AlphaScanResult } from "./alphaMarketScanner.js";
 
 function toPaperOrder(quote: AlphaQuote): AlphaPaperOrder {
   const now = new Date().toISOString();
@@ -31,7 +31,10 @@ function placePaperOrder(state: AlphaBotState, quote: AlphaQuote): void {
   state.strategyStats.quotesPlaced += 1;
 }
 
-export async function runPaperTick(scan: AlphaScanResult, config: AlphaConfig): Promise<AlphaBotState> {
+export async function runPaperTick(
+  scan: AlphaScanResult,
+  config: AlphaConfig,
+): Promise<AlphaBotState> {
   const state = await loadAlphaState(config.stateKey, config.paperStartingBalanceUsd);
   accrueEstimatedRewards(state, config, Date.now(), {
     markets: [...scan.rewardMarkets, ...scan.markets],

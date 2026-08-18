@@ -8,14 +8,11 @@ import {
   clearLaneOverride,
   formatLaneStatusLines,
   getLaneOverrides,
+  type LaneOverrides,
   parseLaneName,
   setLaneOverride,
-  type LaneOverrides,
 } from "./laneOverrideStore.js";
-import {
-  TelegramBotClient,
-  type TelegramUpdate,
-} from "./telegramBotClient.js";
+import type { TelegramBotClient, TelegramUpdate } from "./telegramBotClient.js";
 import { telegramEnabled } from "./telegramNotifier.js";
 
 export interface ParsedTelegramCommand {
@@ -31,9 +28,7 @@ export interface TelegramCommandContext {
   reply: (text: string) => Promise<void>;
 }
 
-export type TelegramCommandHandler = (
-  ctx: TelegramCommandContext,
-) => Promise<string>;
+export type TelegramCommandHandler = (ctx: TelegramCommandContext) => Promise<string>;
 
 export interface TelegramCommandLogger {
   info: (obj: Record<string, unknown>, msg: string) => void;
@@ -53,9 +48,7 @@ export const HELP_TEXT = [
  * Parse `/cmd@BotName args` into a normalized command name (lowercase, no @bot).
  * Returns undefined when the text is not a slash command.
  */
-export function parseTelegramCommand(
-  text: string | undefined,
-): ParsedTelegramCommand | undefined {
+export function parseTelegramCommand(text: string | undefined): ParsedTelegramCommand | undefined {
   if (!text) {
     return undefined;
   }
@@ -67,9 +60,7 @@ export function parseTelegramCommand(
   const token = rawToken ?? "";
   const withoutSlash = token.slice(1);
   const at = withoutSlash.indexOf("@");
-  const name = (
-    at >= 0 ? withoutSlash.slice(0, at) : withoutSlash
-  ).toLowerCase();
+  const name = (at >= 0 ? withoutSlash.slice(0, at) : withoutSlash).toLowerCase();
   if (!name) {
     return undefined;
   }
@@ -80,10 +71,7 @@ export function parseTelegramCommand(
   };
 }
 
-export function isAllowedTelegramChat(
-  chatId: string | number,
-  allowedChatId: string,
-): boolean {
+export function isAllowedTelegramChat(chatId: string | number, allowedChatId: string): boolean {
   return String(chatId) === String(allowedChatId);
 }
 
@@ -118,10 +106,7 @@ function onOff(value: boolean): string {
   return value ? "on" : "off";
 }
 
-export function formatLanesReply(
-  base = readAlphaConfig(),
-  overrides: LaneOverrides,
-): string {
+export function formatLanesReply(base = readAlphaConfig(), overrides: LaneOverrides): string {
   return ["Lane status (effective on next tick):", ...formatLaneStatusLines(base, overrides)].join(
     "\n",
   );
@@ -169,15 +154,11 @@ export function createLaneCommandHandlers(
   const lane: TelegramCommandHandler = async (ctx) => {
     const parts = ctx.command.args.split(/\s+/).filter(Boolean);
     if (parts.length !== 2) {
-      throw new Error(
-        "Usage: /lane <reward|spread|parity> <on|off|default>",
-      );
+      throw new Error("Usage: /lane <reward|spread|parity> <on|off|default>");
     }
     const laneName = parseLaneName(parts[0] ?? "");
     if (!laneName) {
-      throw new Error(
-        `Unknown lane "${parts[0]}". Use reward, spread, or parity.`,
-      );
+      throw new Error(`Unknown lane "${parts[0]}". Use reward, spread, or parity.`);
     }
     const action = (parts[1] ?? "").toLowerCase();
     let overrides: LaneOverrides;
@@ -186,9 +167,7 @@ export function createLaneCommandHandlers(
     } else if (action === "default") {
       overrides = await clearLaneOverride(laneName, "telegram");
     } else {
-      throw new Error(
-        `Unknown action "${parts[1]}". Use on, off, or default.`,
-      );
+      throw new Error(`Unknown action "${parts[1]}". Use on, off, or default.`);
     }
     const base = readAlphaConfig();
     const effective =
@@ -198,9 +177,7 @@ export function createLaneCommandHandlers(
           ? (overrides.spread ?? base.enableSpreadLane)
           : (overrides.parity ?? base.enableParityLane);
     const overrideLabel =
-      overrides[laneName] === undefined
-        ? "env default"
-        : `override ${onOff(overrides[laneName]!)}`;
+      overrides[laneName] === undefined ? "env default" : `override ${onOff(overrides[laneName]!)}`;
     return [
       `Lane ${laneName} → ${onOff(effective)} (${overrideLabel}).`,
       "Takes effect on the next cron tick.",
@@ -307,10 +284,7 @@ export class TelegramCommandLoop {
           truncateReply(`Command /${command.name} failed: ${text}`),
         );
       } catch (sendError) {
-        this.logger.error(
-          { err: errorMessage(sendError) },
-          "telegram command error reply failed",
-        );
+        this.logger.error({ err: errorMessage(sendError) }, "telegram command error reply failed");
       }
     }
   }
@@ -322,10 +296,7 @@ export class TelegramCommandLoop {
       if (isAbortError(error)) {
         return;
       }
-      this.logger.warn(
-        { err: errorMessage(error) },
-        "telegram command drain failed; continuing",
-      );
+      this.logger.warn({ err: errorMessage(error) }, "telegram command drain failed; continuing");
     }
 
     while (this.running) {
@@ -343,10 +314,7 @@ export class TelegramCommandLoop {
         if (!this.running || isAbortError(error)) {
           return;
         }
-        this.logger.warn(
-          { err: errorMessage(error) },
-          "telegram getUpdates failed; backing off",
-        );
+        this.logger.warn({ err: errorMessage(error) }, "telegram getUpdates failed; backing off");
         await sleep(this.errorBackoffMs, this.abort?.signal);
       }
     }
@@ -371,9 +339,7 @@ export class TelegramCommandLoop {
   }
 }
 
-export function startTelegramCommandLoop(
-  options: TelegramCommandLoopOptions,
-): TelegramCommandLoop {
+export function startTelegramCommandLoop(options: TelegramCommandLoopOptions): TelegramCommandLoop {
   const loop = new TelegramCommandLoop(options);
   loop.start();
   return loop;

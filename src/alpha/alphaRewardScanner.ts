@@ -17,7 +17,12 @@ function competitionAllowed(
 }
 
 function midpointFor(book: AlphaOrderbook): number | undefined {
-  return book.yesMid ?? (book.yesBid !== undefined && book.yesAsk !== undefined ? (book.yesBid + book.yesAsk) / 2 : undefined);
+  return (
+    book.yesMid ??
+    (book.yesBid !== undefined && book.yesAsk !== undefined
+      ? (book.yesBid + book.yesAsk) / 2
+      : undefined)
+  );
 }
 
 export function rankRewardCandidates(
@@ -34,13 +39,18 @@ export function rankRewardCandidates(
     const warnings: string[] = [];
     if (!market.reward.isRewardMarket) continue;
     if (market.resolved || market.status !== "live") warnings.push("market is not live");
-    if (dailyReward !== undefined && dailyReward < config.minDailyRewardUsd) warnings.push("daily reward below configured minimum");
+    if (dailyReward !== undefined && dailyReward < config.minDailyRewardUsd)
+      warnings.push("daily reward below configured minimum");
     if (maxSpread === undefined) warnings.push("reward spread metadata unavailable");
-    if (market.reward.minContracts === undefined) warnings.push("minimum aggregate reward size unavailable");
-    if (maxSpread !== undefined && maxSpread < config.minRewardZoneCents) warnings.push("reward zone is very tight");
-    if (!competitionAllowed(market.reward.competitionLevel, config.maxRewardCompetition)) warnings.push("competition above configured maximum");
+    if (market.reward.minContracts === undefined)
+      warnings.push("minimum aggregate reward size unavailable");
+    if (maxSpread !== undefined && maxSpread < config.minRewardZoneCents)
+      warnings.push("reward zone is very tight");
+    if (!competitionAllowed(market.reward.competitionLevel, config.maxRewardCompetition))
+      warnings.push("competition above configured maximum");
     if (midpoint === undefined) warnings.push("midpoint unavailable");
-    if (midpoint !== undefined && (midpoint < config.minMidpoint || midpoint > config.maxMidpoint)) warnings.push("midpoint outside configured range");
+    if (midpoint !== undefined && (midpoint < config.minMidpoint || midpoint > config.maxMidpoint))
+      warnings.push("midpoint outside configured range");
     if (!book || book.source === "unavailable") warnings.push("orderbook unavailable");
 
     const score =
@@ -68,12 +78,16 @@ export function rankRewardCandidates(
         estimatedRewardUsdPerDay: dailyReward,
         rewardZoneDistanceCents: maxSpread,
         competitionLevel: market.reward.competitionLevel,
-        rewardReason: maxSpread !== undefined ? `quote inside +/-${maxSpread.toFixed(2)}c reward zone` : "reward zone unknown",
+        rewardReason:
+          maxSpread !== undefined
+            ? `quote inside +/-${maxSpread.toFixed(2)}c reward zone`
+            : "reward zone unknown",
       },
     });
   }
   return opportunities.sort((a, b) => {
-    const rewardDiff = (b.reward.estimatedRewardUsdPerDay ?? 0) - (a.reward.estimatedRewardUsdPerDay ?? 0);
+    const rewardDiff =
+      (b.reward.estimatedRewardUsdPerDay ?? 0) - (a.reward.estimatedRewardUsdPerDay ?? 0);
     if (rewardDiff !== 0) return rewardDiff;
     return (b.reward.rewardZoneDistanceCents ?? 0) - (a.reward.rewardZoneDistanceCents ?? 0);
   });

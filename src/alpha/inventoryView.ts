@@ -38,11 +38,22 @@ export function positionKey(marketAppId: number): string {
   return String(marketAppId);
 }
 
-export function escrowedSellSharesFor(walletOrders: OpenOrder[], marketAppId: number, outcome: AlphaOutcome): number {
+export function escrowedSellSharesFor(
+  walletOrders: OpenOrder[],
+  marketAppId: number,
+  outcome: AlphaOutcome,
+): number {
   const positionFlag = outcome === "YES" ? 1 : 0;
   return walletOrders
-    .filter((order) => order.marketAppId === marketAppId && order.side === 0 && order.position === positionFlag)
-    .reduce((sum, order) => sum + (fromMicroUnits(Math.max(0, order.quantity - order.quantityFilled)) ?? 0), 0);
+    .filter(
+      (order) =>
+        order.marketAppId === marketAppId && order.side === 0 && order.position === positionFlag,
+    )
+    .reduce(
+      (sum, order) =>
+        sum + (fromMicroUnits(Math.max(0, order.quantity - order.quantityFilled)) ?? 0),
+      0,
+    );
 }
 
 function emptySide(): InventorySide {
@@ -53,7 +64,10 @@ function sideFrom(free: number, escrow: number): InventorySide {
   return { free, escrow, total: free + escrow };
 }
 
-export function getPosition(state: AlphaBotState, marketAppId: number): AlphaPaperPosition | undefined {
+export function getPosition(
+  state: AlphaBotState,
+  marketAppId: number,
+): AlphaPaperPosition | undefined {
   return state.positionsByMarket[positionKey(marketAppId)];
 }
 
@@ -128,10 +142,16 @@ export function migratePositionsToAppIdKeys(state: AlphaBotState): number {
 
     const candidates = uniqueKeys
       .map((key) => ({ key, position: state.positionsByMarket[key] }))
-      .filter((entry): entry is { key: string; position: AlphaPaperPosition } => entry.position !== undefined);
+      .filter(
+        (entry): entry is { key: string; position: AlphaPaperPosition } =>
+          entry.position !== undefined,
+      );
     if (candidates.length === 0) continue;
 
-    candidates.sort((a, b) => b.position.yesShares + b.position.noShares - (a.position.yesShares + a.position.noShares));
+    candidates.sort(
+      (a, b) =>
+        b.position.yesShares + b.position.noShares - (a.position.yesShares + a.position.noShares),
+    );
     const primary = candidates[0]!.position;
     const merged: AlphaPaperPosition = {
       ...primary,
@@ -148,13 +168,18 @@ export function migratePositionsToAppIdKeys(state: AlphaBotState): number {
     };
 
     for (const { key, position } of candidates.slice(1)) {
-      if (merged.avgYesCost <= 0 && position.avgYesCost > 0) merged.avgYesCost = position.avgYesCost;
+      if (merged.avgYesCost <= 0 && position.avgYesCost > 0)
+        merged.avgYesCost = position.avgYesCost;
       if (merged.avgNoCost <= 0 && position.avgNoCost > 0) merged.avgNoCost = position.avgNoCost;
       if (!merged.slug && position.slug) merged.slug = position.slug;
       if (!merged.title && position.title) merged.title = position.title;
-      if (merged.lastMark === undefined && position.lastMark !== undefined) merged.lastMark = position.lastMark;
+      if (merged.lastMark === undefined && position.lastMark !== undefined)
+        merged.lastMark = position.lastMark;
       merged.realisedPnl += position.realisedPnl;
-      merged.unaccountedTicks = Math.max(merged.unaccountedTicks ?? 0, position.unaccountedTicks ?? 0);
+      merged.unaccountedTicks = Math.max(
+        merged.unaccountedTicks ?? 0,
+        position.unaccountedTicks ?? 0,
+      );
       if (key !== canonical) {
         delete state.positionsByMarket[key];
         removed += 1;
@@ -174,7 +199,10 @@ export function migratePositionsToAppIdKeys(state: AlphaBotState): number {
   return removed;
 }
 
-export function buildInventorySnapshot(walletPositions: WalletPosition[], walletOrders: OpenOrder[]): Map<number, MarketInventory> {
+export function buildInventorySnapshot(
+  walletPositions: WalletPosition[],
+  walletOrders: OpenOrder[],
+): Map<number, MarketInventory> {
   const snapshot = new Map<number, MarketInventory>();
 
   for (const position of walletPositions) {
@@ -201,9 +229,15 @@ export function buildInventorySnapshot(walletPositions: WalletPosition[], wallet
       no: emptySide(),
     };
     if (order.position === 1) {
-      existing.yes = sideFrom(existing.yes.free, escrowedSellSharesFor(walletOrders, order.marketAppId, "YES"));
+      existing.yes = sideFrom(
+        existing.yes.free,
+        escrowedSellSharesFor(walletOrders, order.marketAppId, "YES"),
+      );
     } else {
-      existing.no = sideFrom(existing.no.free, escrowedSellSharesFor(walletOrders, order.marketAppId, "NO"));
+      existing.no = sideFrom(
+        existing.no.free,
+        escrowedSellSharesFor(walletOrders, order.marketAppId, "NO"),
+      );
     }
     snapshot.set(order.marketAppId, existing);
   }
@@ -276,7 +310,11 @@ export function syncPositionsFromInventory(
   for (const [key, position] of Object.entries(state.positionsByMarket)) {
     if (position.marketAppId === undefined) continue;
     if (snapshot.has(position.marketAppId)) continue;
-    if (position.yesShares <= INVENTORY_SHARE_EPSILON && position.noShares <= INVENTORY_SHARE_EPSILON) continue;
+    if (
+      position.yesShares <= INVENTORY_SHARE_EPSILON &&
+      position.noShares <= INVENTORY_SHARE_EPSILON
+    )
+      continue;
     // Leave share counts for reconcile to decide; do not wipe avg here.
     void key;
   }
@@ -296,7 +334,8 @@ export function inventoryInvariantMismatches(
     const position = getPosition(state, marketAppId);
     for (const outcome of ["YES", "NO"] as const) {
       const side = outcome === "YES" ? inventory.yes : inventory.no;
-      const stateShares = outcome === "YES" ? (position?.yesShares ?? 0) : (position?.noShares ?? 0);
+      const stateShares =
+        outcome === "YES" ? (position?.yesShares ?? 0) : (position?.noShares ?? 0);
       if (Math.abs(stateShares - side.total) <= INVENTORY_SHARE_EPSILON) continue;
       mismatches.push({
         marketAppId,

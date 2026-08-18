@@ -1,10 +1,9 @@
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
-
+import { type AlphaSdkClient, fromMicroUnits } from "./alphaClient.js";
 import type { AlphaConfig, AlphaMode } from "./alphaConfig.js";
-import { AlphaSdkClient, fromMicroUnits } from "./alphaClient.js";
-import { escrowedSellSharesFor, getPosition, positionKey } from "./inventoryView.js";
 import { saveAlphaState } from "./alphaStateStore.js";
 import type { AlphaBotState } from "./alphaTypes.js";
+import { escrowedSellSharesFor, getPosition, positionKey } from "./inventoryView.js";
 
 type MergeMode = Extract<AlphaMode, "live-dry-run" | "live">;
 
@@ -85,7 +84,9 @@ export async function runInventoryMergeLane(input: {
   const { liveClient, config, mode, walletPositions, state } = input;
   const walletOrders = input.walletOrders ?? [];
   if (!config.enableInventoryMerge) {
-    return [{ kind: "skip", message: "Inventory merge disabled (ALPHA_ENABLE_INVENTORY_MERGE=false)" }];
+    return [
+      { kind: "skip", message: "Inventory merge disabled (ALPHA_ENABLE_INVENTORY_MERGE=false)" },
+    ];
   }
   const actions: MergeAction[] = [];
   const minShares = Math.max(0, config.inventoryMergeMinShares);
@@ -128,7 +129,10 @@ export async function runInventoryMergeLane(input: {
     }
 
     try {
-      const result = await liveClient.mergeShares({ marketAppId: position.marketAppId, amountShares: sets });
+      const result = await liveClient.mergeShares({
+        marketAppId: position.marketAppId,
+        amountShares: sets,
+      });
       const realised = applyMergeToState(state, position.marketAppId, sets);
       await saveAlphaState(config.stateKey, state);
       actions.push({
@@ -139,7 +143,9 @@ export async function runInventoryMergeLane(input: {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[ghillie-live] inventory merge failed market=${position.marketAppId}: ${message}`);
+      console.error(
+        `[ghillie-live] inventory merge failed market=${position.marketAppId}: ${message}`,
+      );
       actions.push({ kind: "skip", message: `Inventory merge failed ${title}: ${message}` });
     }
   }

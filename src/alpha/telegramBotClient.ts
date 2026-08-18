@@ -45,11 +45,7 @@ export class TelegramBotClient {
     return Array.isArray(result) ? result : [];
   }
 
-  async sendText(
-    chatId: string,
-    text: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<void> {
+  async sendText(chatId: string, text: string, options?: { signal?: AbortSignal }): Promise<void> {
     await this.call(
       "sendMessage",
       {

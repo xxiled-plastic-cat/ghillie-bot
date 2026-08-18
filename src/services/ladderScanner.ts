@@ -5,7 +5,11 @@ export function scanLadderInversions(ladders: Ladder[], minEdgeBps: number): Lad
   const opportunities: LadderOpportunity[] = [];
   for (const ladder of ladders) {
     for (let lowerIndex = 0; lowerIndex < ladder.markets.length; lowerIndex += 1) {
-      for (let higherIndex = lowerIndex + 1; higherIndex < ladder.markets.length; higherIndex += 1) {
+      for (
+        let higherIndex = lowerIndex + 1;
+        higherIndex < ladder.markets.length;
+        higherIndex += 1
+      ) {
         const lower = ladder.markets[lowerIndex];
         const higher = ladder.markets[higherIndex];
         if (lower?.yesAsk === undefined || higher?.yesBid === undefined) continue;

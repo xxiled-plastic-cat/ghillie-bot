@@ -1,5 +1,10 @@
-import type { AlphaMarket, AlphaOrderbook, AlphaQuote, AlphaRewardInfo } from "../../alpha/alphaTypes.js";
 import type { AlphaScanResult } from "../../alpha/alphaMarketScanner.js";
+import type {
+  AlphaMarket,
+  AlphaOrderbook,
+  AlphaQuote,
+  AlphaRewardInfo,
+} from "../../alpha/alphaTypes.js";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
@@ -33,7 +38,9 @@ function rewardFromUnknown(raw: unknown): AlphaRewardInfo {
   const record = asRecord(raw) ?? {};
   const competition = asString(record.competitionLevel);
   return {
-    isRewardMarket: asBool(record.isRewardMarket) ?? Boolean(asNumber(record.dailyRewardsUsd) ?? asNumber(record.estimatedUsdPerDay)),
+    isRewardMarket:
+      asBool(record.isRewardMarket) ??
+      Boolean(asNumber(record.dailyRewardsUsd) ?? asNumber(record.estimatedUsdPerDay)),
     totalRewardsUsd: asNumber(record.totalRewardsUsd),
     rewardsPaidOutUsd: asNumber(record.rewardsPaidOutUsd),
     remainingRewardsUsd: asNumber(record.remainingRewardsUsd),
@@ -43,7 +50,10 @@ function rewardFromUnknown(raw: unknown): AlphaRewardInfo {
     maxRewardSpreadCents: asNumber(record.maxRewardSpreadCents),
     minContracts: asNumber(record.minContracts),
     competitionLevel:
-      competition === "low" || competition === "medium" || competition === "high" || competition === "unknown"
+      competition === "low" ||
+      competition === "medium" ||
+      competition === "high" ||
+      competition === "unknown"
         ? competition
         : "unknown",
   };
@@ -91,8 +101,12 @@ function parseBookLevels(raw: unknown): BookLevel[] {
     if (!record) continue;
     const price = asNumber(record.price) ?? asNumber(record.p);
     const quantityShares =
-      asNumber(record.quantityShares) ?? asNumber(record.size) ?? asNumber(record.quantity) ?? asNumber(record.q);
-    if (price === undefined || quantityShares === undefined || price <= 0 || quantityShares <= 0) continue;
+      asNumber(record.quantityShares) ??
+      asNumber(record.size) ??
+      asNumber(record.quantity) ??
+      asNumber(record.q);
+    if (price === undefined || quantityShares === undefined || price <= 0 || quantityShares <= 0)
+      continue;
     const owner = asString(record.owner) ?? asString(record.address);
     levels.push(owner ? { price, quantityShares, owner } : { price, quantityShares });
   }
@@ -119,7 +133,8 @@ function sideOrdersFromAmarok(
   bid: number | undefined,
   ask: number | undefined,
 ): { bids: BookLevel[]; asks: BookLevel[] } {
-  const nested = asRecord(book[side]) ?? asRecord(book[`${side}SideOrders`]) ?? asRecord(book[`${side}Orders`]);
+  const nested =
+    asRecord(book[side]) ?? asRecord(book[`${side}SideOrders`]) ?? asRecord(book[`${side}Orders`]);
   const bids = firstNonEmptyLevels(
     parseBookLevels(nested?.bids),
     parseBookLevels(book[`${side}Bids`]),
@@ -145,7 +160,9 @@ export function orderbookFromAmarok(market: AlphaMarket, rawBook: unknown): Alph
     asNumber(book.yesSpread) ??
     (yesBid !== undefined && yesAsk !== undefined ? yesAsk - yesBid : undefined) ??
     (asNumber(book.spreadBps) !== undefined ? asNumber(book.spreadBps)! / 10_000 : undefined);
-  const noSpread = asNumber(book.noSpread) ?? (noBid !== undefined && noAsk !== undefined ? noAsk - noBid : undefined);
+  const noSpread =
+    asNumber(book.noSpread) ??
+    (noBid !== undefined && noAsk !== undefined ? noAsk - noBid : undefined);
   const yesSideOrders = sideOrdersFromAmarok(book, "yes", yesBid, yesAsk);
   const noSideOrders = sideOrdersFromAmarok(book, "no", noBid, noAsk);
   return {
@@ -157,8 +174,13 @@ export function orderbookFromAmarok(market: AlphaMarket, rawBook: unknown): Alph
     yesAsk,
     noBid,
     noAsk,
-    yesMid: asNumber(book.yesMid) ?? asNumber(book.mid) ?? (yesBid !== undefined && yesAsk !== undefined ? (yesBid + yesAsk) / 2 : market.yesPrice),
-    noMid: asNumber(book.noMid) ?? (noBid !== undefined && noAsk !== undefined ? (noBid + noAsk) / 2 : market.noPrice),
+    yesMid:
+      asNumber(book.yesMid) ??
+      asNumber(book.mid) ??
+      (yesBid !== undefined && yesAsk !== undefined ? (yesBid + yesAsk) / 2 : market.yesPrice),
+    noMid:
+      asNumber(book.noMid) ??
+      (noBid !== undefined && noAsk !== undefined ? (noBid + noAsk) / 2 : market.noPrice),
     yesSpread,
     noSpread,
     bestSpread: Math.max(yesSpread ?? 0, noSpread ?? 0) || undefined,
@@ -175,7 +197,11 @@ function quoteSourceFromKind(kind: string | undefined): AlphaQuote["source"] {
 
 export function quotesFromAmarok(payload: unknown): AlphaQuote[] {
   const data = unwrapData(payload);
-  const rows = Array.isArray(data) ? data : Array.isArray(asRecord(data)?.quotes) ? (asRecord(data)!.quotes as unknown[]) : [];
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(asRecord(data)?.quotes)
+      ? (asRecord(data)!.quotes as unknown[])
+      : [];
   const quotes: AlphaQuote[] = [];
   for (const [index, row] of rows.entries()) {
     const record = asRecord(row);
@@ -204,7 +230,8 @@ export function quotesFromAmarok(payload: unknown): AlphaQuote[] {
       rewardEligible: asBool(record.rewardEligible) ?? source === "reward",
       rewardZoneDistanceCents: asNumber(record.rewardZoneDistanceCents),
       rewardMinContracts: asNumber(record.rewardMinContracts),
-      estimatedRewardUsdPerDay: asNumber(record.estimatedRewardUsdPerDay) ?? asNumber(record.estimatedUsdPerDay),
+      estimatedRewardUsdPerDay:
+        asNumber(record.estimatedRewardUsdPerDay) ?? asNumber(record.estimatedUsdPerDay),
       source,
     });
   }
@@ -243,7 +270,9 @@ export function scanFromAmarok(params: {
   const scanData = asRecord(unwrapData(params.scanPayload)) ?? asRecord(params.scanPayload) ?? {};
   const marketRows =
     (Array.isArray(scanData.markets) ? scanData.markets : undefined) ??
-    (Array.isArray(unwrapData(params.scanPayload)) ? (unwrapData(params.scanPayload) as unknown[]) : undefined) ??
+    (Array.isArray(unwrapData(params.scanPayload))
+      ? (unwrapData(params.scanPayload) as unknown[])
+      : undefined) ??
     [];
 
   const markets: AlphaMarket[] = [];
@@ -261,9 +290,15 @@ export function scanFromAmarok(params: {
 
   const opportunityRows = [
     ...opportunityRowsFromPayload(params.opportunitiesPayload, "opportunities"),
-    ...opportunityRowsFromPayload(params.rewardsPayload, "rewards").map((row) => withDefaultKind(row, "lp_reward")),
-    ...opportunityRowsFromPayload(params.spreadsPayload, "spreads").map((row) => withDefaultKind(row, "spread")),
-    ...opportunityRowsFromPayload(params.parityPayload, "parity").map((row) => withDefaultKind(row, "parity")),
+    ...opportunityRowsFromPayload(params.rewardsPayload, "rewards").map((row) =>
+      withDefaultKind(row, "lp_reward"),
+    ),
+    ...opportunityRowsFromPayload(params.spreadsPayload, "spreads").map((row) =>
+      withDefaultKind(row, "spread"),
+    ),
+    ...opportunityRowsFromPayload(params.parityPayload, "parity").map((row) =>
+      withDefaultKind(row, "parity"),
+    ),
   ];
 
   const rewardByAppId = new Map<number, AlphaMarket>();
@@ -312,8 +347,10 @@ export function scanFromAmarok(params: {
       orderbooks.set(
         market.marketAppId,
         orderbookFromAmarok(market, {
-          yesBid: market.yesPrice !== undefined ? Math.max(0.01, market.yesPrice - 0.01) : undefined,
-          yesAsk: market.yesPrice !== undefined ? Math.min(0.99, market.yesPrice + 0.01) : undefined,
+          yesBid:
+            market.yesPrice !== undefined ? Math.max(0.01, market.yesPrice - 0.01) : undefined,
+          yesAsk:
+            market.yesPrice !== undefined ? Math.min(0.99, market.yesPrice + 0.01) : undefined,
           mid: market.yesPrice,
         }),
       );

@@ -1,7 +1,4 @@
-import {
-  createBotStateStore,
-  type BotStateStore,
-} from "../integrations/storage/botStateStore.js";
+import { type BotStateStore, createBotStateStore } from "../integrations/storage/botStateStore.js";
 import type { PolyPaperLane, PolyPaperModelState, PolyPaperState } from "./polyPaperTypes.js";
 
 const MAX_HISTORY = 2_000;
@@ -59,7 +56,10 @@ export function emptyPolyPaperState(startingBalance: number): PolyPaperState {
   };
 }
 
-function normalizeModelState(state: PolyPaperModelState, startingBalance: number): PolyPaperModelState {
+function normalizeModelState(
+  state: PolyPaperModelState,
+  startingBalance: number,
+): PolyPaperModelState {
   const empty = emptyModelState(startingBalance);
   return {
     ...empty,
@@ -90,7 +90,10 @@ function normalizePolyPaperState(parsed: PolyPaperState, startingBalance: number
   };
 }
 
-export async function loadPolyPaperState(key: string, startingBalance: number): Promise<PolyPaperState> {
+export async function loadPolyPaperState(
+  key: string,
+  startingBalance: number,
+): Promise<PolyPaperState> {
   const raw = await getStore().getJson(key);
   if (!raw || typeof raw !== "object") return emptyPolyPaperState(startingBalance);
   return normalizePolyPaperState(raw as PolyPaperState, startingBalance);

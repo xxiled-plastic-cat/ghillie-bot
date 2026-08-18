@@ -31,7 +31,9 @@ function bestParitySize(
   const slippageBufferBps = (config.paritySlippageCents / 100) * 2 * 10_000;
   let low = 0.000001;
   let high = maxSize;
-  let best: { size: number; yes: number; no: number; edgeBps: number; netEdgeBps: number } | undefined;
+  let best:
+    | { size: number; yes: number; no: number; edgeBps: number; netEdgeBps: number }
+    | undefined;
   for (let i = 0; i < 24; i += 1) {
     const size = (low + high) / 2;
     const yes = weightedPrice(yesLevels, size);
@@ -47,7 +49,11 @@ function bestParitySize(
     }
     const edgeBps = edgeFn(yes, no);
     const netEdgeBps = edgeBps - slippageBufferBps;
-    if (notional >= config.parityMinTradeUsd && notional >= config.parityMinDepthUsd && netEdgeBps >= config.parityMinEdgeBps) {
+    if (
+      notional >= config.parityMinTradeUsd &&
+      notional >= config.parityMinDepthUsd &&
+      netEdgeBps >= config.parityMinEdgeBps
+    ) {
       best = { size, yes, no, edgeBps, netEdgeBps };
       low = size;
     } else if (notional < config.parityMinTradeUsd || notional < config.parityMinDepthUsd) {
