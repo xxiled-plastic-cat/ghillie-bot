@@ -1,6 +1,12 @@
 import type { PolyConfig } from "./polyConfig.js";
 import type { PolyPaperReport, PolyPaperState, PolyPaperTickResult } from "./polyPaperTypes.js";
-import type { PolyMarket, PolyOpportunity, PolyParityPlan, PolyScanResult, PolyTokenBookPair } from "./polyTypes.js";
+import type {
+  PolyMarket,
+  PolyOpportunity,
+  PolyParityPlan,
+  PolyScanResult,
+  PolyTokenBookPair,
+} from "./polyTypes.js";
 
 function fmtUsd(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return "unknown";
@@ -18,20 +24,31 @@ function fmtPrice(value: number | undefined): string {
 }
 
 function pairBestSpreadCents(pair: PolyTokenBookPair): number | undefined {
-  const spreads = [pair.yesBook?.spread, pair.noBook?.spread].filter((value): value is number => value !== undefined);
+  const spreads = [pair.yesBook?.spread, pair.noBook?.spread].filter(
+    (value): value is number => value !== undefined,
+  );
   if (spreads.length === 0) return undefined;
   return Math.max(...spreads) * 100;
 }
 
-function summarizeSurface(scan: PolyScanResult): { twoSided: number; oneSided: number; empty: number; averageSpreadCents?: number } {
+function summarizeSurface(scan: PolyScanResult): {
+  twoSided: number;
+  oneSided: number;
+  empty: number;
+  averageSpreadCents?: number;
+} {
   let twoSided = 0;
   let oneSided = 0;
   let empty = 0;
   let spreadSum = 0;
   let spreadCount = 0;
   for (const pair of scan.tokenBooksByConditionId.values()) {
-    const hasBid = Boolean(pair.yesBook?.bestBid !== undefined || pair.noBook?.bestBid !== undefined);
-    const hasAsk = Boolean(pair.yesBook?.bestAsk !== undefined || pair.noBook?.bestAsk !== undefined);
+    const hasBid = Boolean(
+      pair.yesBook?.bestBid !== undefined || pair.noBook?.bestBid !== undefined,
+    );
+    const hasAsk = Boolean(
+      pair.yesBook?.bestAsk !== undefined || pair.noBook?.bestAsk !== undefined,
+    );
     if (hasBid && hasAsk) twoSided += 1;
     else if (hasBid || hasAsk) oneSided += 1;
     else empty += 1;
@@ -126,7 +143,10 @@ export function printPolyRewards(rewardCandidates: PolyOpportunity[]): void {
   if (rewardCandidates.length === 0) console.log("No reward candidates found.");
 }
 
-export function printPolyMarketDetail(market: PolyMarket, pair: PolyTokenBookPair | undefined): void {
+export function printPolyMarketDetail(
+  market: PolyMarket,
+  pair: PolyTokenBookPair | undefined,
+): void {
   console.log("POLYMARKET DETAIL");
   console.log("");
   console.log(`Title: ${market.title}`);
@@ -146,13 +166,19 @@ export function printPolyMarketDetail(market: PolyMarket, pair: PolyTokenBookPai
   }
   if (pair.yesToken) {
     console.log(`Token A (${pair.yesToken.outcome}) id=${pair.yesToken.tokenId}`);
-    console.log(`  bid/ask: ${fmtPrice(pair.yesBook?.bestBid)} / ${fmtPrice(pair.yesBook?.bestAsk)}`);
-    console.log(`  spread: ${fmtCents(pair.yesBook?.spread !== undefined ? pair.yesBook.spread * 100 : undefined)}`);
+    console.log(
+      `  bid/ask: ${fmtPrice(pair.yesBook?.bestBid)} / ${fmtPrice(pair.yesBook?.bestAsk)}`,
+    );
+    console.log(
+      `  spread: ${fmtCents(pair.yesBook?.spread !== undefined ? pair.yesBook.spread * 100 : undefined)}`,
+    );
   }
   if (pair.noToken) {
     console.log(`Token B (${pair.noToken.outcome}) id=${pair.noToken.tokenId}`);
     console.log(`  bid/ask: ${fmtPrice(pair.noBook?.bestBid)} / ${fmtPrice(pair.noBook?.bestAsk)}`);
-    console.log(`  spread: ${fmtCents(pair.noBook?.spread !== undefined ? pair.noBook.spread * 100 : undefined)}`);
+    console.log(
+      `  spread: ${fmtCents(pair.noBook?.spread !== undefined ? pair.noBook.spread * 100 : undefined)}`,
+    );
   }
 }
 
@@ -189,7 +215,9 @@ export function printPolyPaperWatch(result: PolyPaperTickResult): void {
   const conservative = result.summaries.find((summary) => summary.model === "conservative");
   const balanced = result.summaries.find((summary) => summary.model === "balanced");
   if (!conservative || !balanced) {
-    console.log(`[${new Date().toISOString().slice(11, 19)}] poly_paper markets=${result.scanMarkets} summaries unavailable`);
+    console.log(
+      `[${new Date().toISOString().slice(11, 19)}] poly_paper markets=${result.scanMarkets} summaries unavailable`,
+    );
     return;
   }
   const ts = new Date().toISOString().slice(11, 19);
@@ -221,7 +249,9 @@ export function printPolyPaperWatch(result: PolyPaperTickResult): void {
       balanced.runtimeHours,
     )} parity=${balanced.parityFilled}/${balanced.parityAttempts})`,
   );
-  console.log(`  rejectTop     cons=${topRejects(conservative.rejectReasonsTop)} bal=${topRejects(balanced.rejectReasonsTop)}`);
+  console.log(
+    `  rejectTop     cons=${topRejects(conservative.rejectReasonsTop)} bal=${topRejects(balanced.rejectReasonsTop)}`,
+  );
 }
 
 export function printPolyPaperReport(
@@ -232,26 +262,72 @@ export function printPolyPaperReport(
   console.log("GHILLIE / POLYMARKET PAPER REPORT");
   console.log("");
   console.log(reportLine("Fill rate", pct(conservative.fillRate), pct(balanced.fillRate)));
-  console.log(reportLine("Median fill time", fmtSeconds(conservative.medianFillSeconds), fmtSeconds(balanced.medianFillSeconds)));
-  console.log(reportLine("P95 fill time", fmtSeconds(conservative.p95FillSeconds), fmtSeconds(balanced.p95FillSeconds)));
-  console.log(reportLine("Cancellation ratio", pct(conservative.cancellationRatio), pct(balanced.cancellationRatio)));
+  console.log(
+    reportLine(
+      "Median fill time",
+      fmtSeconds(conservative.medianFillSeconds),
+      fmtSeconds(balanced.medianFillSeconds),
+    ),
+  );
+  console.log(
+    reportLine(
+      "P95 fill time",
+      fmtSeconds(conservative.p95FillSeconds),
+      fmtSeconds(balanced.p95FillSeconds),
+    ),
+  );
+  console.log(
+    reportLine(
+      "Cancellation ratio",
+      pct(conservative.cancellationRatio),
+      pct(balanced.cancellationRatio),
+    ),
+  );
   console.log(
     reportLine(
       "Quote distance",
-      conservative.quoteCompetitivenessBps !== undefined ? `${conservative.quoteCompetitivenessBps.toFixed(1)}bps` : "unknown",
-      balanced.quoteCompetitivenessBps !== undefined ? `${balanced.quoteCompetitivenessBps.toFixed(1)}bps` : "unknown",
+      conservative.quoteCompetitivenessBps !== undefined
+        ? `${conservative.quoteCompetitivenessBps.toFixed(1)}bps`
+        : "unknown",
+      balanced.quoteCompetitivenessBps !== undefined
+        ? `${balanced.quoteCompetitivenessBps.toFixed(1)}bps`
+        : "unknown",
     ),
   );
-  console.log(reportLine("Realised PnL", fmtUsd(conservative.realisedPnl), fmtUsd(balanced.realisedPnl)));
-  console.log(reportLine("Unrealised PnL", fmtUsd(conservative.unrealisedPnl), fmtUsd(balanced.unrealisedPnl)));
+  console.log(
+    reportLine("Realised PnL", fmtUsd(conservative.realisedPnl), fmtUsd(balanced.realisedPnl)),
+  );
+  console.log(
+    reportLine(
+      "Unrealised PnL",
+      fmtUsd(conservative.unrealisedPnl),
+      fmtUsd(balanced.unrealisedPnl),
+    ),
+  );
   console.log(reportLine("Total PnL", fmtUsd(conservative.totalPnl), fmtUsd(balanced.totalPnl)));
-  console.log(reportLine("Reward eligible", `${conservative.rewardEligibleHours.toFixed(2)}h`, `${balanced.rewardEligibleHours.toFixed(2)}h`));
-  console.log(reportLine("Parity conversion", pct(conservative.parityConversionRate), pct(balanced.parityConversionRate)));
+  console.log(
+    reportLine(
+      "Reward eligible",
+      `${conservative.rewardEligibleHours.toFixed(2)}h`,
+      `${balanced.rewardEligibleHours.toFixed(2)}h`,
+    ),
+  );
+  console.log(
+    reportLine(
+      "Parity conversion",
+      pct(conservative.parityConversionRate),
+      pct(balanced.parityConversionRate),
+    ),
+  );
   console.log(
     reportLine(
       "Parity edge decay",
-      conservative.parityEdgeDecayBps !== undefined ? `${conservative.parityEdgeDecayBps.toFixed(1)}bps` : "unknown",
-      balanced.parityEdgeDecayBps !== undefined ? `${balanced.parityEdgeDecayBps.toFixed(1)}bps` : "unknown",
+      conservative.parityEdgeDecayBps !== undefined
+        ? `${conservative.parityEdgeDecayBps.toFixed(1)}bps`
+        : "unknown",
+      balanced.parityEdgeDecayBps !== undefined
+        ? `${balanced.parityEdgeDecayBps.toFixed(1)}bps`
+        : "unknown",
     ),
   );
   console.log("");

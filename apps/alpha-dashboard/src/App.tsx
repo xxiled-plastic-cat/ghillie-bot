@@ -67,7 +67,11 @@ export default function App() {
     setError(null);
     try {
       const response = await fetch("/api/alpha/dashboard");
-      const payload = (await response.json()) as { ok: boolean; error?: string; data?: DashboardSnapshot };
+      const payload = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        data?: DashboardSnapshot;
+      };
       if (!response.ok || !payload.ok || !payload.data) {
         throw new Error(payload.error || `Request failed (${response.status})`);
       }
@@ -116,7 +120,10 @@ export default function App() {
           snapshot.overview.activeRewardRateDailyUsd,
         )}/day)`,
       },
-      { label: "Reward Liquidity Share", value: fmtPercent(snapshot.overview.activeRewardLiquidityShare) },
+      {
+        label: "Reward Liquidity Share",
+        value: fmtPercent(snapshot.overview.activeRewardLiquidityShare),
+      },
     );
     return cards;
   }, [snapshot]);
@@ -178,29 +185,40 @@ export default function App() {
                 <ul className="reconciliation-list">
                   <li>
                     Trading: realised {fmtUsd(snapshot.realPnl.realisedPnlUsd)} | unrealised{" "}
-                    {fmtUsd(snapshot.realPnl.unrealisedPnlUsd)} | total {fmtUsd(snapshot.realPnl.tradingPnlUsd)}
+                    {fmtUsd(snapshot.realPnl.unrealisedPnlUsd)} | total{" "}
+                    {fmtUsd(snapshot.realPnl.tradingPnlUsd)}
                   </li>
                   <li>
-                    Rewards received (on-chain): {fmtRewardUsd(snapshot.realPnl.rewardsReceivedUsd)} | est accrual{" "}
-                    {fmtRewardUsd(snapshot.realPnl.estimatedRewardsUsd)}
+                    Rewards received (on-chain): {fmtRewardUsd(snapshot.realPnl.rewardsReceivedUsd)}{" "}
+                    | est accrual {fmtRewardUsd(snapshot.realPnl.estimatedRewardsUsd)}
                   </li>
                   <li>
                     Cash: wallet {fmtUsdAmount(snapshot.realPnl.walletUsdc)} | bid escrow{" "}
-                    {fmtUsdAmount(snapshot.realPnl.bidEscrowUsd)} | total {fmtUsdAmount(snapshot.realPnl.cashUsdc)}
+                    {fmtUsdAmount(snapshot.realPnl.bidEscrowUsd)} | total{" "}
+                    {fmtUsdAmount(snapshot.realPnl.cashUsdc)}
                   </li>
-                  <li>Total economic (trading + rewards): {fmtUsd(snapshot.realPnl.totalEconomicUsd)}</li>
+                  <li>
+                    Total economic (trading + rewards): {fmtUsd(snapshot.realPnl.totalEconomicUsd)}
+                  </li>
                   <li>Positions value: {fmtUsdAmount(snapshot.realPnl.positionsValueUsd)}</li>
-                  <li>Net worth (cash + positions): {fmtUsdAmount(snapshot.realPnl.netWorthUsd)}</li>
-                  <li>Market USDC in (lifetime): {fmtUsdAmount(snapshot.realPnl.marketUsdcInUsd)}</li>
-                  <li>Market USDC out (lifetime): {fmtUsdAmount(snapshot.realPnl.marketUsdcOutUsd)}</li>
+                  <li>
+                    Net worth (cash + positions): {fmtUsdAmount(snapshot.realPnl.netWorthUsd)}
+                  </li>
+                  <li>
+                    Market USDC in (lifetime): {fmtUsdAmount(snapshot.realPnl.marketUsdcInUsd)}
+                  </li>
+                  <li>
+                    Market USDC out (lifetime): {fmtUsdAmount(snapshot.realPnl.marketUsdcOutUsd)}
+                  </li>
                   {snapshot.realPnl.ledgerCachedAt && (
                     <li>Flow data as of: {fmtTime(snapshot.realPnl.ledgerCachedAt)}</li>
                   )}
                 </ul>
                 {Math.abs(snapshot.realPnl.externalCapitalDriftUsd) > 0.05 && (
                   <p className="warning-inline">
-                    External capital drift vs historical seed: {fmtUsd(snapshot.realPnl.externalCapitalDriftUsd)} (diagnostic
-                    only — not trading PnL)
+                    External capital drift vs historical seed:{" "}
+                    {fmtUsd(snapshot.realPnl.externalCapitalDriftUsd)} (diagnostic only — not
+                    trading PnL)
                   </p>
                 )}
               </section>
@@ -210,9 +228,7 @@ export default function App() {
               <article className="card table-card">
                 <div className="section-heading">
                   <h2>Positions ({snapshot.positions.length})</h2>
-                  <p>
-                    {fmtUsdAmount(totalLockedUsd(snapshot.positions))} locked
-                  </p>
+                  <p>{fmtUsdAmount(totalLockedUsd(snapshot.positions))} locked</p>
                 </div>
                 {snapshot.positions.length === 0 ? (
                   <p className="empty">No open positions found.</p>
@@ -233,22 +249,23 @@ export default function App() {
                       {snapshot.positions.map((position) => {
                         const url = marketUrl(position.slug);
                         return (
-                        <tr
-                          key={`${position.marketId}:${position.outcome}`}
-                          className={url ? "clickable-row" : undefined}
-                          onClick={() => {
-                            if (url) window.open(url, "_blank", "noopener,noreferrer");
-                          }}
-                        >
-                          <td>{position.title}</td>
-                          <td>{position.outcome}</td>
-                          <td>{fmtShares(position.shares)}</td>
-                          <td>{fmtUsdAmount(position.lockedUsd)}</td>
-                          <td>{fmtPrice(position.avgCost)}</td>
-                          <td>{fmtPrice(position.mark)}</td>
-                          <td>{fmtUsd(position.unrealisedPnl)}</td>
-                        </tr>
-                      )})}
+                          <tr
+                            key={`${position.marketId}:${position.outcome}`}
+                            className={url ? "clickable-row" : undefined}
+                            onClick={() => {
+                              if (url) window.open(url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            <td>{position.title}</td>
+                            <td>{position.outcome}</td>
+                            <td>{fmtShares(position.shares)}</td>
+                            <td>{fmtUsdAmount(position.lockedUsd)}</td>
+                            <td>{fmtPrice(position.avgCost)}</td>
+                            <td>{fmtPrice(position.mark)}</td>
+                            <td>{fmtUsd(position.unrealisedPnl)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -274,23 +291,24 @@ export default function App() {
                       {snapshot.openOrders.map((order) => {
                         const url = marketUrl(order.slug);
                         return (
-                        <tr
-                          key={order.id}
-                          className={url ? "clickable-row" : undefined}
-                          onClick={() => {
-                            if (url) window.open(url, "_blank", "noopener,noreferrer");
-                          }}
-                        >
-                          <td>{order.title}</td>
-                          <td>
-                            {order.outcome} {order.side}
-                          </td>
-                          <td>{order.source}</td>
-                          <td>{fmtPrice(order.price)}</td>
-                          <td>{fmtShares(order.remainingShares)}</td>
-                          <td>{fmtUsd(order.notionalUsd)}</td>
-                        </tr>
-                      )})}
+                          <tr
+                            key={order.id}
+                            className={url ? "clickable-row" : undefined}
+                            onClick={() => {
+                              if (url) window.open(url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            <td>{order.title}</td>
+                            <td>
+                              {order.outcome} {order.side}
+                            </td>
+                            <td>{order.source}</td>
+                            <td>{fmtPrice(order.price)}</td>
+                            <td>{fmtShares(order.remainingShares)}</td>
+                            <td>{fmtUsd(order.notionalUsd)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

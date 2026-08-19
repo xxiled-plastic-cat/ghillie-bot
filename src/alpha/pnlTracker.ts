@@ -1,6 +1,9 @@
 import type { AlphaBotState, AlphaOrderbook } from "./alphaTypes.js";
 
-export function updateUnrealisedPnl(state: AlphaBotState, books: Map<number, AlphaOrderbook>): void {
+export function updateUnrealisedPnl(
+  state: AlphaBotState,
+  books: Map<number, AlphaOrderbook>,
+): void {
   let total = 0;
   for (const position of Object.values(state.positionsByMarket)) {
     const book =

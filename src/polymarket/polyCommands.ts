@@ -1,13 +1,19 @@
 import dotenv from "dotenv";
 
 import { readPolyConfig } from "./polyConfig.js";
-import { printPolyMarketDetail, printPolyPaperReport, printPolyPaperWatch, printPolyRewards, printPolyScan } from "./polyFormatter.js";
+import {
+  printPolyMarketDetail,
+  printPolyPaperReport,
+  printPolyPaperWatch,
+  printPolyRewards,
+  printPolyScan,
+} from "./polyFormatter.js";
 import { loadPolyScan } from "./polyMarketScanner.js";
-import { scanPolyParity } from "./polyParityScanner.js";
 import { buildPolyPaperReport } from "./polyPaperPnlTracker.js";
+import { loadPolyPaperReportState, runPolyPaperTick } from "./polyPaperTrader.js";
+import { scanPolyParity } from "./polyParityScanner.js";
 import { rankPolyRewardCandidates } from "./polyRewardScanner.js";
 import { rankPolySpreadCandidates } from "./polySpreadScanner.js";
-import { loadPolyPaperReportState, runPolyPaperTick } from "./polyPaperTrader.js";
 import type { PolyMarket } from "./polyTypes.js";
 
 dotenv.config();
@@ -23,8 +29,16 @@ async function buildPolyScan(): Promise<{
 }> {
   const config = readPolyConfig();
   const scan = await loadPolyScan(config);
-  const rewardCandidates = rankPolyRewardCandidates(scan.markets, scan.tokenBooksByConditionId, config);
-  const spreadCandidates = rankPolySpreadCandidates(scan.markets, scan.tokenBooksByConditionId, config);
+  const rewardCandidates = rankPolyRewardCandidates(
+    scan.markets,
+    scan.tokenBooksByConditionId,
+    config,
+  );
+  const spreadCandidates = rankPolySpreadCandidates(
+    scan.markets,
+    scan.tokenBooksByConditionId,
+    config,
+  );
   const parityPlans = scanPolyParity(scan.markets, scan.tokenBooksByConditionId, config);
   return { config, scan, rewardCandidates, spreadCandidates, parityPlans };
 }
@@ -53,7 +67,8 @@ async function runRewardsCommand(): Promise<void> {
 }
 
 async function runMarketCommand(arg: string | undefined): Promise<void> {
-  if (!arg) throw new Error("Usage: npm run poly:market -- <market-slug-or-condition-id-or-token-id>");
+  if (!arg)
+    throw new Error("Usage: npm run poly:market -- <market-slug-or-condition-id-or-token-id>");
   const { scan } = await buildPolyScan();
   const market = findMarket(scan, arg);
   if (!market) throw new Error(`Polymarket market not found: ${arg}`);
@@ -90,7 +105,9 @@ async function runPaperReportCommand(): Promise<void> {
 }
 
 function printUsage(): void {
-  console.log("Usage: tsx src/polymarket/polyCommands.ts <scan|rewards|market|paper|paper-watch|paper-report>");
+  console.log(
+    "Usage: tsx src/polymarket/polyCommands.ts <scan|rewards|market|paper|paper-watch|paper-report>",
+  );
 }
 
 async function main(): Promise<void> {

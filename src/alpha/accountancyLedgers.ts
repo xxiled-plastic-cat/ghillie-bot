@@ -41,14 +41,20 @@ export type AccountancySnapshot = {
   totalEconomicUsd: number;
 };
 
-export function computeTradingLedger(state: Pick<AlphaBotState, "realisedPnl" | "unrealisedPnl" | "totalPnl">): TradingLedger {
+export function computeTradingLedger(
+  state: Pick<AlphaBotState, "realisedPnl" | "unrealisedPnl" | "totalPnl">,
+): TradingLedger {
   const realisedPnlUsd = state.realisedPnl;
   const unrealisedPnlUsd = state.unrealisedPnl;
-  const tradingPnlUsd = Number.isFinite(state.totalPnl) ? state.totalPnl : realisedPnlUsd + unrealisedPnlUsd;
+  const tradingPnlUsd = Number.isFinite(state.totalPnl)
+    ? state.totalPnl
+    : realisedPnlUsd + unrealisedPnlUsd;
   return { realisedPnlUsd, unrealisedPnlUsd, tradingPnlUsd };
 }
 
-export function computeRewardsLedger(state: Pick<AlphaBotState, "estimatedRewardsUsd" | "capitalLedger">): RewardsLedger {
+export function computeRewardsLedger(
+  state: Pick<AlphaBotState, "estimatedRewardsUsd" | "capitalLedger">,
+): RewardsLedger {
   return {
     receivedUsd: state.capitalLedger?.rewardsReceivedUsd ?? 0,
     estimatedAccrualUsd: state.estimatedRewardsUsd,
@@ -56,7 +62,10 @@ export function computeRewardsLedger(state: Pick<AlphaBotState, "estimatedReward
   };
 }
 
-export function computeCashLedger(walletUsdc: number | undefined, bidEscrowUsd: number): CashLedger {
+export function computeCashLedger(
+  walletUsdc: number | undefined,
+  bidEscrowUsd: number,
+): CashLedger {
   const escrow = Number.isFinite(bidEscrowUsd) ? Math.max(0, bidEscrowUsd) : 0;
   if (walletUsdc === undefined || !Number.isFinite(walletUsdc)) {
     return { walletUsdc: undefined, bidEscrowUsd: escrow, cashUsdc: undefined };

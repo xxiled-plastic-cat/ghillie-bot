@@ -4,10 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import {
-  buildPlanReviewInstructions,
-  PLAN_REVIEW_PROMPT,
-} from "../../alpha/planReview/prompt.js";
+import { buildPlanReviewInstructions, PLAN_REVIEW_PROMPT } from "../../alpha/planReview/prompt.js";
 import { loadOperatorPreferences } from "./operatorPreferences.js";
 
 describe("buildPlanReviewInstructions", () => {

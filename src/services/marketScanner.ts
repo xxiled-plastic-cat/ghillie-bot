@@ -85,7 +85,9 @@ export async function loadScanInputs(config: ScannerConfig): Promise<{
       oraclePrice: oracleByUnderlying.get(market.underlying),
     }),
   );
-  const openMarkets = allMarkets.filter((market) => isValidOpenMarket(market, config.minHaltBufferMinutes));
+  const openMarkets = allMarkets.filter((market) =>
+    isValidOpenMarket(market, config.minHaltBufferMinutes),
+  );
   const ladders = groupIntoLadders(openMarkets);
 
   return { allMarkets, openMarkets, ladders, rewardMarkets };

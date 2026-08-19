@@ -1,5 +1,5 @@
-import { createAmarokCliRuntime, printCliError } from "./amarokShared.js";
 import { parseExecutionQuotePayload } from "../integrations/algorand/submitUnsigned.js";
+import { createAmarokCliRuntime, printCliError } from "./amarokShared.js";
 
 function readArg(name: string, fallback?: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -16,13 +16,17 @@ async function main(): Promise<void> {
   const side = (readArg("--side", "bid") ?? "bid").toLowerCase() === "ask" ? "ask" : "bid";
 
   if (!Number.isFinite(marketAppId) || marketAppId <= 0) {
-    throw new Error("Usage: npm run amarok:execution-dry -- --market <marketAppId> [--price 0.45] [--size 1] [--submit]");
+    throw new Error(
+      "Usage: npm run amarok:execution-dry -- --market <marketAppId> [--price 0.45] [--size 1] [--submit]",
+    );
   }
 
   const { runtime, walletAddress, config } = createAmarokCliRuntime();
   try {
     console.log(`x402 payer / agent: ${walletAddress}`);
-    console.log(`Building alpha_place_limit_order market=${marketAppId} ${outcome} ${side} @ ${price} size=${sizeShares}`);
+    console.log(
+      `Building alpha_place_limit_order market=${marketAppId} ${outcome} ${side} @ ${price} size=${sizeShares}`,
+    );
     const result = await runtime.client.getExecutionQuote(walletAddress, [
       {
         shapeKey: "alpha_place_limit_order",
@@ -45,7 +49,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    const { signAndSubmitUnsignedGroup } = await import("../integrations/algorand/submitUnsigned.js");
+    const { signAndSubmitUnsignedGroup } = await import(
+      "../integrations/algorand/submitUnsigned.js"
+    );
     const submitted = await signAndSubmitUnsignedGroup({
       wallet: runtime.wallet,
       algodServer: config.algodServer,

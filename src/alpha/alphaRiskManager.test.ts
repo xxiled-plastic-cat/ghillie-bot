@@ -10,8 +10,8 @@ import {
   getTotalExposure,
 } from "./alphaRiskManager.js";
 import { emptyAlphaState } from "./alphaStateStore.js";
-import { ensurePositionByAppId } from "./inventoryView.js";
 import type { AlphaPaperOrder, AlphaQuote } from "./alphaTypes.js";
+import { ensurePositionByAppId } from "./inventoryView.js";
 
 const APP_ID = 2001;
 
@@ -33,7 +33,9 @@ function testConfig(overrides: Partial<AlphaConfig> = {}): AlphaConfig {
   } as AlphaConfig;
 }
 
-function quote(partial: Partial<AlphaQuote> & Pick<AlphaQuote, "side" | "source" | "outcome">): AlphaQuote {
+function quote(
+  partial: Partial<AlphaQuote> & Pick<AlphaQuote, "side" | "source" | "outcome">,
+): AlphaQuote {
   const price = partial.price ?? 0.4;
   const sizeShares = partial.sizeShares ?? 5;
   return {
@@ -95,7 +97,14 @@ describe("alphaRiskManager exposure", () => {
     assert.ok(Math.abs(getTotalExposure(state, "live") - 4) < 1e-9);
 
     state.openOrders = [
-      openOrder({ side: "bid", outcome: "YES", source: "spread", price: 0.3, remainingShares: 2, runMode: "live" }),
+      openOrder({
+        side: "bid",
+        outcome: "YES",
+        source: "spread",
+        price: 0.3,
+        remainingShares: 2,
+        runMode: "live",
+      }),
       openOrder({
         side: "ask",
         outcome: "YES",
@@ -147,7 +156,11 @@ describe("alphaRiskManager exposure", () => {
     const position = state.positionsByMarket[String(APP_ID)]!;
     position.yesShares = 10;
     position.avgYesCost = 0.5; // $5 inventory
-    const config = testConfig({ maxInventoryNotionalUsd: 5, spreadMaxTotalExposureUsd: 100, spreadMaxMarketExposureUsd: 100 });
+    const config = testConfig({
+      maxInventoryNotionalUsd: 5,
+      spreadMaxTotalExposureUsd: 100,
+      spreadMaxMarketExposureUsd: 100,
+    });
     const decision = checkQuoteRisk(
       quote({ side: "bid", source: "spread", outcome: "YES", price: 0.4, sizeShares: 1 }),
       state,

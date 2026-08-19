@@ -16,9 +16,16 @@ function secondsSince(iso: string): number {
   return (Date.now() - new Date(iso).getTime()) / 1000;
 }
 
-export function decideRequote(state: BotState, topTarget: TopTarget | undefined, config: ExecutionConfig): RequoteDecision {
+export function decideRequote(
+  state: BotState,
+  topTarget: TopTarget | undefined,
+  config: ExecutionConfig,
+): RequoteDecision {
   if (!topTarget) {
-    return { action: "skip", reason: "no executable top target passed scoring, halt, and risk filters" };
+    return {
+      action: "skip",
+      reason: "no executable top target passed scoring, halt, and risk filters",
+    };
   }
 
   if (minutesUntil(topTarget.haltTs) <= config.haltBlockMinutes) {
@@ -26,7 +33,11 @@ export function decideRequote(state: BotState, topTarget: TopTarget | undefined,
   }
 
   if (countMovesInLastHour(state, config) >= config.maxMovesPerHour) {
-    return { action: "skip", reason: `max moves per hour reached (${config.maxMovesPerHour})`, topTarget };
+    return {
+      action: "skip",
+      reason: `max moves per hour reached (${config.maxMovesPerHour})`,
+      topTarget,
+    };
   }
 
   const active = state.activeTarget;
@@ -38,10 +49,16 @@ export function decideRequote(state: BotState, topTarget: TopTarget | undefined,
   const nextKey = targetKey(topTarget);
   const activeAgeSeconds = secondsSince(active.placedAt);
   const scoreDeltaPct =
-    active.targetScore > 0 ? ((topTarget.targetScore - active.targetScore) / active.targetScore) * 100 : 100;
+    active.targetScore > 0
+      ? ((topTarget.targetScore - active.targetScore) / active.targetScore) * 100
+      : 100;
 
   if (minutesUntil(topTarget.haltTs) <= config.haltBlockMinutes) {
-    return { action: "move", reason: "active target approaching halt block; rotate to safer target", topTarget };
+    return {
+      action: "move",
+      reason: "active target approaching halt block; rotate to safer target",
+      topTarget,
+    };
   }
 
   if (activeAgeSeconds < config.minDwellSeconds && activeKey !== nextKey) {
@@ -54,9 +71,14 @@ export function decideRequote(state: BotState, topTarget: TopTarget | undefined,
 
   if (activeKey === nextKey) {
     const priceChanged =
-      active.yesBuyPriceCents !== topTarget.yesBuyPriceCents || active.noBuyPriceCents !== topTarget.noBuyPriceCents;
+      active.yesBuyPriceCents !== topTarget.yesBuyPriceCents ||
+      active.noBuyPriceCents !== topTarget.noBuyPriceCents;
     if (!priceChanged) {
-      return { action: "hold", reason: "current target remains top target with same quote levels", topTarget };
+      return {
+        action: "hold",
+        reason: "current target remains top target with same quote levels",
+        topTarget,
+      };
     }
     return { action: "move", reason: "same target but quote levels changed", topTarget };
   }

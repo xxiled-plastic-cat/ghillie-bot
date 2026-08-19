@@ -1,19 +1,19 @@
+import type { PaymentReceipt } from "../integrations/amarok/payment.js";
 import type { AccountancySnapshot } from "./accountancyLedgers.js";
 import { buildAccountancySnapshot } from "./accountancyLedgers.js";
 import type { AlphaConfig } from "./alphaConfig.js";
 import { summarizeLiveExposure } from "./alphaFormatter.js";
 import type { AlphaScanResult } from "./alphaMarketScanner.js";
 import type { AlphaBotState } from "./alphaTypes.js";
-import type { PaymentReceipt } from "../integrations/amarok/payment.js";
 import type { LiveAction } from "./liveTrader.js";
 import type { RewardRateContext } from "./rewardRateEstimator.js";
 import {
   escapeHtml,
   escapeRichMarkdown,
+  type TelegramRichReport,
   truncateHtmlReport,
   truncatePlainReport,
   truncateRichReport,
-  type TelegramRichReport,
 } from "./telegramNotifier.js";
 
 const MAX_ACTION_ROWS = 8;
@@ -138,7 +138,10 @@ function exitExposureRows(exposure: ExposureSummary, includeRealisedPlusOpen: bo
 
 function rewardRateRows(exposure: ExposureSummary): TableRow[] {
   return [
-    ["Eligible liq", `${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord)`],
+    [
+      "Eligible liq",
+      `${formatUsd(exposure.rewardEligibleLiquidityUsd)} (${exposure.rewardEligibleOrders} ord)`,
+    ],
     ["Active /day", formatRewardUsd(exposure.activeRewardRateDailyUsd)],
     ["Potential /day", formatRewardUsd(exposure.potentialRewardRateDailyUsd)],
     [
@@ -205,7 +208,10 @@ export function summarizeTickActions(actions: LiveAction[]): TickActionSummary {
       summary.inferredEntryFills.push(action.message);
       continue;
     }
-    if (action.message.startsWith("Live exit fill") || action.message.startsWith("Inferred live exit fill")) {
+    if (
+      action.message.startsWith("Live exit fill") ||
+      action.message.startsWith("Inferred live exit fill")
+    ) {
       summary.inferredExitFills.push(action.message);
       continue;
     }
@@ -230,7 +236,10 @@ export function extractInferenceCostLine(actions: LiveAction[]): string | undefi
   return undefined;
 }
 
-function buildAccountancy(input: GhillieReportBaseInput, exposure: ExposureSummary): AccountancySnapshot {
+function buildAccountancy(
+  input: GhillieReportBaseInput,
+  exposure: ExposureSummary,
+): AccountancySnapshot {
   const positionsValueUsd = Object.values(input.state.positionsByMarket).reduce((sum, position) => {
     const yesMark = position.lastMark ?? position.avgYesCost;
     const noMark = position.lastMark ?? position.avgNoCost;
@@ -274,7 +283,9 @@ function buildSpendRichLines(spend: TelegramSpendInput | undefined): string[] {
   const payments = spend.payments ?? [];
   if (payments.length > 0) {
     const total = payments.reduce((sum, payment) => sum + BigInt(payment.amountBaseUnits), 0n);
-    lines.push(`Amarok x402: **${payments.length}** call(s), \`${total.toString()}\` USDC base units`);
+    lines.push(
+      `Amarok x402: **${payments.length}** call(s), \`${total.toString()}\` USDC base units`,
+    );
   }
   if (spend.inferenceCostLine) {
     lines.push(escapeRichMarkdown(spend.inferenceCostLine));
@@ -313,7 +324,8 @@ function mergeSpend(
   spend: TelegramSpendInput | undefined,
   actions: LiveAction[] | undefined,
 ): TelegramSpendInput | undefined {
-  const inferenceCostLine = spend?.inferenceCostLine ?? (actions ? extractInferenceCostLine(actions) : undefined);
+  const inferenceCostLine =
+    spend?.inferenceCostLine ?? (actions ? extractInferenceCostLine(actions) : undefined);
   const payments = spend?.payments;
   if ((!payments || payments.length === 0) && !inferenceCostLine) return undefined;
   return { payments, inferenceCostLine };
@@ -452,15 +464,11 @@ function formatTickDigestRich(input: TickDigestInput): string {
   ];
 
   if (detailRows.length > 0) {
-    sections.push(
-      "",
-      "### Action details",
-      "",
-      "| Kind | Detail |",
-      "| --- | --- |",
-    );
+    sections.push("", "### Action details", "", "| Kind | Detail |", "| --- | --- |");
     for (const row of detailRows) {
-      sections.push(`| ${escapeRichMarkdown(row.kind)} | ${escapeRichMarkdown(truncate(row.detail, 120))} |`);
+      sections.push(
+        `| ${escapeRichMarkdown(row.kind)} | ${escapeRichMarkdown(truncate(row.detail, 120))} |`,
+      );
     }
     const total =
       actionSummary.placed.length +
@@ -632,7 +640,10 @@ export function formatDailySummaryReport(input: GhillieReportBaseInput): Telegra
   };
 }
 
-export function rewardContextFromScan(scan: AlphaScanResult, walletAddress?: string): RewardRateContext {
+export function rewardContextFromScan(
+  scan: AlphaScanResult,
+  walletAddress?: string,
+): RewardRateContext {
   return {
     markets: [...scan.rewardMarkets, ...scan.markets],
     orderbooks: scan.orderbooks,

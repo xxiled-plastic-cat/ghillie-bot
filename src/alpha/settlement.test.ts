@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { emptyAlphaState } from "./alphaStateStore.js";
 import type { AlphaPaperPosition } from "./alphaTypes.js";
-import { computeMergeSets, applyMergeToState } from "./inventoryMerger.js";
+import { applyMergeToState, computeMergeSets } from "./inventoryMerger.js";
 import { getPosition, positionKey } from "./inventoryView.js";
 import { realiseStaleSide } from "./liveTrader.js";
 import { planBuyMergeUnwind, planSplitSellResidual } from "./parityTrader.js";
@@ -124,7 +124,13 @@ describe("realiseStaleSide", () => {
 
   it("prunes sustained unresolved absence without mark write-off PnL", () => {
     const pos = position({ yesShares: 3, avgYesCost: 0.4, lastMark: 0.7 });
-    const result = realiseStaleSide(pos, "YES", 3, { isResolved: false }, { sustainedAbsence: true });
+    const result = realiseStaleSide(
+      pos,
+      "YES",
+      3,
+      { isResolved: false },
+      { sustainedAbsence: true },
+    );
     assert.equal(result.allowMutate, true);
     assert.equal(result.realisePnl, false);
     assert.equal(result.realised, 0);

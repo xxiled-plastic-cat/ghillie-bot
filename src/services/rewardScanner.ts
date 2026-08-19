@@ -1,4 +1,10 @@
-import type { LiquiditySignal, MakerCandidate, Market, RewardMarket, Timeframe } from "../types/market.js";
+import type {
+  LiquiditySignal,
+  MakerCandidate,
+  Market,
+  RewardMarket,
+  Timeframe,
+} from "../types/market.js";
 import { getHaltWindowMinutes, minutesUntil } from "../utils/math.js";
 
 type RewardScanOptions = {
@@ -50,7 +56,10 @@ function estimateYesFairPrice(market: Market): number {
   return clamp(0.5 + normalizedDistance * 0.5, 0.05, 0.95);
 }
 
-function getSuggestedTwoSidedQuotes(mid: number, spread: number): {
+function getSuggestedTwoSidedQuotes(
+  mid: number,
+  spread: number,
+): {
   yesBid: number;
   yesAsk: number;
   noBid: number;
@@ -96,7 +105,8 @@ export function rankMakerCandidates(
     const spreadRoomWeight = Math.min(spread / maxSpread, 1);
     const haltWeight = Math.min(minsToHalt / 180, 1);
     const rewardWeight = getMarketRewardBoost(market, rewardByMarket);
-    const score = atmWeight * 0.55 + spreadRoomWeight * 0.25 + haltWeight * 0.1 + rewardWeight * 0.1;
+    const score =
+      atmWeight * 0.55 + spreadRoomWeight * 0.25 + haltWeight * 0.1 + rewardWeight * 0.1;
 
     const reason = `near-ATM=${atmWeight.toFixed(2)}, spread=${(spread * 100).toFixed(
       2,
@@ -139,10 +149,20 @@ export function rankLiquiditySignals(
     const fairYes = estimateYesFairPrice(market);
 
     const directYesMid =
-      market.yesBid !== undefined && market.yesAsk !== undefined ? (market.yesBid + market.yesAsk) / 2 : undefined;
-    const directSpread = market.yesBid !== undefined && market.yesAsk !== undefined ? market.yesAsk - market.yesBid : undefined;
+      market.yesBid !== undefined && market.yesAsk !== undefined
+        ? (market.yesBid + market.yesAsk) / 2
+        : undefined;
+    const directSpread =
+      market.yesBid !== undefined && market.yesAsk !== undefined
+        ? market.yesAsk - market.yesBid
+        : undefined;
 
-    if (bookState === "two_sided" && directYesMid !== undefined && directSpread !== undefined && directSpread > 0) {
+    if (
+      bookState === "two_sided" &&
+      directYesMid !== undefined &&
+      directSpread !== undefined &&
+      directSpread > 0
+    ) {
       const yesMid = directYesMid;
       const spread = directSpread;
       const atmWeight = 1 - Math.abs(yesMid - 0.5) / 0.5;
@@ -185,7 +205,8 @@ export function rankLiquiditySignals(
     const atmWeight = 1 - Math.abs(fairYes - 0.5) / 0.5;
     const haltWeight = Math.min(minsToHalt / 180, 1);
     const bookStateWeight = bookState === "empty" ? 1 : 0.6;
-    const score = atmWeight * 0.25 + rewardBoost * 0.35 + haltWeight * 0.25 + bookStateWeight * 0.15;
+    const score =
+      atmWeight * 0.25 + rewardBoost * 0.35 + haltWeight * 0.25 + bookStateWeight * 0.15;
     const seedContext =
       bookState === "two_sided"
         ? "book has no inside room (tight/locked spread)"

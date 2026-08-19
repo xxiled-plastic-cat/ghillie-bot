@@ -1,15 +1,11 @@
 import OpenAI from "openai";
 
-import {
-  readZeroSignalConfig,
-  zsProxyHealthzUrl,
-  type ZeroSignalConfig,
-} from "./config.js";
+import { readZeroSignalConfig, type ZeroSignalConfig, zsProxyHealthzUrl } from "./config.js";
 import {
   createAgentResponse,
   finalResponseFromStream,
-  withStreamTrue,
   type ResponsesClient,
+  withStreamTrue,
 } from "./responses.js";
 
 export type ZeroSignalClient = {
@@ -70,9 +66,7 @@ export async function assertZsProxyHealthy(
       throw error;
     }
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `zs-proxy unreachable at ${healthz} (${detail}); refusing to call inference`,
-    );
+    throw new Error(`zs-proxy unreachable at ${healthz} (${detail}); refusing to call inference`);
   } finally {
     clearTimeout(timer);
   }

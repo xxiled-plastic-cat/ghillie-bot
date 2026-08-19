@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 const apiPort = Number.parseInt(process.env.ALPHA_DASHBOARD_PORT || "8787", 10);
 const apiHost = process.env.ALPHA_DASHBOARD_HOST || "127.0.0.1";

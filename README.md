@@ -152,6 +152,8 @@ npm run alpha:live-dry-run
 npm run alpha:live
 npm run typecheck
 npm test
+npm run format:check
+npm run lint
 ```
 
 `ghillie:*` aliases (`ghillie:live`, `ghillie:cron:live`, `ghillie:dashboard`, …) wrap the same `alpha:*` scripts; `alpha:*` remains canonical.
@@ -213,4 +215,4 @@ See [QUICKSTART.md](./QUICKSTART.md) for leftover env cleanup (`POLY_*` / Div3rs
 
 ## Roadmap
 
-See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (prompt review, Amarok hardening, lint/CI, and more).
+See [docs/development-checklist.md](docs/development-checklist.md) for recommended next steps (prompt review, Amarok hardening, and more).

@@ -41,7 +41,11 @@ export function readExecutionConfig(): ExecutionConfig {
 }
 
 export function validateExecutionConfig(config: ExecutionConfig): void {
-  if (config.minPriceCents < 1 || config.maxPriceCents > 99 || config.minPriceCents >= config.maxPriceCents) {
+  if (
+    config.minPriceCents < 1 ||
+    config.maxPriceCents > 99 ||
+    config.minPriceCents >= config.maxPriceCents
+  ) {
     throw new Error("MIN_PRICE_CENTS/MAX_PRICE_CENTS must be within 1..99 and non-overlapping");
   }
   if (config.maxActiveOrders < 2) {

@@ -1,8 +1,5 @@
-import {
-  createBotStateStore,
-  type BotStateStore,
-} from "../integrations/storage/botStateStore.js";
-import type { DashboardRealPnl, AlphaDashboardSnapshot } from "./alphaDashboardData.js";
+import { type BotStateStore, createBotStateStore } from "../integrations/storage/botStateStore.js";
+import type { AlphaDashboardSnapshot, DashboardRealPnl } from "./alphaDashboardData.js";
 
 export const PUBLIC_PNL_OBJECT_NAME = "pnl";
 
@@ -61,9 +58,7 @@ export function buildGhilliePublicPnl(input: {
   const navUsd =
     input.realPnl?.netWorthUsd ??
     (input.realPnl
-      ? (input.realPnl.cashUsdc ?? 0) +
-        input.realPnl.bidEscrowUsd +
-        input.realPnl.positionsValueUsd
+      ? (input.realPnl.cashUsdc ?? 0) + input.realPnl.bidEscrowUsd + input.realPnl.positionsValueUsd
       : undefined);
   const previousNavUsd = readPreviousNav(input.previous);
   const pnlAvailable =

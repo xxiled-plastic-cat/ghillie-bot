@@ -1,6 +1,12 @@
 import { getInventoryNotionalUsd } from "../alphaRiskManager.js";
+import type {
+  AlphaBotState,
+  AlphaMarket,
+  AlphaOrderbook,
+  AlphaOutcome,
+  AlphaQuote,
+} from "../alphaTypes.js";
 import { getPosition } from "../inventoryView.js";
-import type { AlphaBotState, AlphaMarket, AlphaOrderbook, AlphaOutcome, AlphaQuote } from "../alphaTypes.js";
 
 export type PlanReviewBookSnippet = {
   bid?: number;
@@ -60,7 +66,9 @@ export type PlanReviewPayload = {
   };
 };
 
-export function isEntryQuote(quote: AlphaQuote): quote is AlphaQuote & { source: "reward" | "spread" } {
+export function isEntryQuote(
+  quote: AlphaQuote,
+): quote is AlphaQuote & { source: "reward" | "spread" } {
   return quote.source === "reward" || quote.source === "spread";
 }
 
@@ -68,7 +76,10 @@ export function entryReviewId(quote: AlphaQuote, index: number): string {
   return `entry-${index}-${quote.marketAppId}-${quote.outcome}-${quote.source}`;
 }
 
-function outcomeBook(book: AlphaOrderbook | undefined, outcome: AlphaOutcome): {
+function outcomeBook(
+  book: AlphaOrderbook | undefined,
+  outcome: AlphaOutcome,
+): {
   bid?: number;
   ask?: number;
   spread?: number;

@@ -1,5 +1,5 @@
-import { createBotStateStore, type BotStateStore } from "../integrations/storage/botStateStore.js";
-import { readAlphaConfig, type AlphaConfig } from "./alphaConfig.js";
+import { type BotStateStore, createBotStateStore } from "../integrations/storage/botStateStore.js";
+import { type AlphaConfig, readAlphaConfig } from "./alphaConfig.js";
 
 export const LANE_OVERRIDE_STATE_KEY = "lane-overrides";
 
@@ -45,8 +45,7 @@ export function normalizeLaneOverrides(raw: unknown): LaneOverrides {
   const record = raw as Record<string, unknown>;
   const overrides: LaneOverrides = {
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : null,
-    source:
-      record.source === "telegram" || record.source === "boot" ? record.source : null,
+    source: record.source === "telegram" || record.source === "boot" ? record.source : null,
   };
   if (typeof record.reward === "boolean") overrides.reward = record.reward;
   if (typeof record.spread === "boolean") overrides.spread = record.spread;
@@ -131,10 +130,7 @@ export function describeEffectiveLanes(
   }));
 }
 
-export function formatLaneStatusLines(
-  base: AlphaConfig,
-  overrides: LaneOverrides,
-): string[] {
+export function formatLaneStatusLines(base: AlphaConfig, overrides: LaneOverrides): string[] {
   return describeEffectiveLanes(base, overrides).map((row) => {
     const overrideLabel =
       row.override === undefined ? "env" : row.override ? "override:on" : "override:off";

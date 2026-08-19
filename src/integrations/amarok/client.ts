@@ -129,7 +129,9 @@ export class AmarokClient {
       throw new Error("Amarok payment is required but no local payment signer is configured");
     }
     assertManagedPaymentResource(name, parsedPreflight.data.mcpPayment.paymentRequired, args);
-    const builtPayment = await this.paymentBuilder.build(parsedPreflight.data.mcpPayment.paymentRequired);
+    const builtPayment = await this.paymentBuilder.build(
+      parsedPreflight.data.mcpPayment.paymentRequired,
+    );
     const paidPayload = parseToolPayload(
       await this.caller.callTool(name, {
         ...args,
@@ -170,19 +172,31 @@ export class AmarokClient {
     return payload;
   }
 
-  async listOpportunities(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async listOpportunities(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_list_opportunities", args, walletAddress);
   }
 
-  async listRewards(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async listRewards(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_list_rewards", args, walletAddress);
   }
 
-  async listSpreads(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async listSpreads(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_list_spreads", args, walletAddress);
   }
 
-  async listParity(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async listParity(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_list_parity", args, walletAddress);
   }
 
@@ -190,11 +204,17 @@ export class AmarokClient {
     return this.callManagedTool("amarok_get_market", { marketAppId }, walletAddress);
   }
 
-  async getQuotes(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async getQuotes(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_get_quotes", args, walletAddress);
   }
 
-  async getScan(walletAddress: string, args: Record<string, unknown> = {}): Promise<ManagedToolResult> {
+  async getScan(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_get_scan", args, walletAddress);
   }
 
@@ -265,7 +285,9 @@ function isToolError(payload: unknown): payload is {
   details?: unknown;
 } {
   return Boolean(
-    payload && typeof payload === "object" && typeof (payload as Record<string, unknown>).error === "string",
+    payload &&
+      typeof payload === "object" &&
+      typeof (payload as Record<string, unknown>).error === "string",
   );
 }
 
@@ -276,10 +298,14 @@ function formatToolError(payload: {
   status?: unknown;
   bodySnippet?: unknown;
 }): string {
-  const base = payload.message ? `Amarok ${payload.error}: ${payload.message}` : `Amarok ${payload.error}`;
+  const base = payload.message
+    ? `Amarok ${payload.error}: ${payload.message}`
+    : `Amarok ${payload.error}`;
   const topLevelParts = [
     typeof payload.status === "number" ? `status=${payload.status}` : null,
-    typeof payload.bodySnippet === "string" ? `body=${truncateErrorDetail(payload.bodySnippet)}` : null,
+    typeof payload.bodySnippet === "string"
+      ? `body=${truncateErrorDetail(payload.bodySnippet)}`
+      : null,
   ].filter(Boolean);
   if (payload.details === undefined || payload.details === null) {
     return topLevelParts.length > 0 ? `${base} (${topLevelParts.join(", ")})` : base;
@@ -311,7 +337,9 @@ function injectManagedWallet(
     args.quotes = quotes.map((item) => {
       const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       const input =
-        record.input && typeof record.input === "object" ? (record.input as Record<string, unknown>) : {};
+        record.input && typeof record.input === "object"
+          ? (record.input as Record<string, unknown>)
+          : {};
       return {
         ...record,
         input: { ...input, agentAddress: walletAddress },

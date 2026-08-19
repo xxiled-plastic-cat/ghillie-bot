@@ -12,7 +12,10 @@ function crossed(order: AlphaPaperOrder, price: number): boolean {
   return order.side === "bid" ? price <= order.price : price >= order.price;
 }
 
-export function detectPaperFills(state: AlphaBotState, books: Map<number, AlphaOrderbook>): AlphaPaperOrder[] {
+export function detectPaperFills(
+  state: AlphaBotState,
+  books: Map<number, AlphaOrderbook>,
+): AlphaPaperOrder[] {
   const fills: AlphaPaperOrder[] = [];
   for (const order of state.openOrders) {
     if (order.status !== "open") continue;
@@ -36,7 +39,10 @@ export function detectPaperFills(state: AlphaBotState, books: Map<number, AlphaO
   return fills;
 }
 
-export function cancelStalePaperOrders(state: AlphaBotState, staleOrderSeconds = 45): AlphaPaperOrder[] {
+export function cancelStalePaperOrders(
+  state: AlphaBotState,
+  staleOrderSeconds = 45,
+): AlphaPaperOrder[] {
   const now = Date.now();
   const cancelled: AlphaPaperOrder[] = [];
   for (const order of state.openOrders) {

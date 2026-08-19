@@ -69,9 +69,13 @@ function extractUnsignedTxns(item: z.infer<typeof executionQuoteItemSchema>): st
 }
 
 function assertNotSubmitted(payload: unknown): void {
-  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
+  const record =
+    payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
   if (!record) return;
-  const meta = record.meta && typeof record.meta === "object" ? (record.meta as Record<string, unknown>) : undefined;
+  const meta =
+    record.meta && typeof record.meta === "object"
+      ? (record.meta as Record<string, unknown>)
+      : undefined;
   if (meta?.executionSubmitted === true) {
     throw new Error("Amarok unexpectedly reported executionSubmitted=true");
   }
@@ -80,7 +84,8 @@ function assertNotSubmitted(payload: unknown): void {
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
     const itemMeta =
-      (item as Record<string, unknown>).meta && typeof (item as Record<string, unknown>).meta === "object"
+      (item as Record<string, unknown>).meta &&
+      typeof (item as Record<string, unknown>).meta === "object"
         ? ((item as Record<string, unknown>).meta as Record<string, unknown>)
         : undefined;
     if (itemMeta?.executionSubmitted === true) {
@@ -190,11 +195,15 @@ export function signUnsignedGroup(params: {
 
   return grouped.map((txn, index) => {
     if (!signIndexes.has(index)) {
-      throw new Error(`Amarok execution quote left txn index ${index} unsigned without provider signature support`);
+      throw new Error(
+        `Amarok execution quote left txn index ${index} unsigned without provider signature support`,
+      );
     }
     const sender = txn.sender.toString();
     if (sender !== params.wallet.address) {
-      throw new Error(`Execution txn sender ${sender} does not match agent wallet ${params.wallet.address}`);
+      throw new Error(
+        `Execution txn sender ${sender} does not match agent wallet ${params.wallet.address}`,
+      );
     }
     return txn.signTxn(params.wallet.secretKey);
   });
@@ -213,7 +222,10 @@ export async function signAndSubmitUnsignedGroup(params: {
   const signed = signUnsignedGroup(params);
   const txIds = txIdsFromSignedGroup(signed);
 
-  const submitted = (await algod.sendRawTransaction(signed).do()) as { txid?: string; txId?: string };
+  const submitted = (await algod.sendRawTransaction(signed).do()) as {
+    txid?: string;
+    txId?: string;
+  };
   const submittedTxId = submitted.txid ?? submitted.txId;
   if (!submittedTxId) throw new Error("algod sendRawTransaction returned no txid");
 
@@ -222,7 +234,10 @@ export async function signAndSubmitUnsignedGroup(params: {
   const waitOrder = confirmationWaitOrder(txIds, params.createEscrowIndex);
 
   for (const txId of waitOrder) {
-    const confirmation = (await algosdk.waitForConfirmation(algod, txId, 8)) as unknown as Record<string, unknown>;
+    const confirmation = (await algosdk.waitForConfirmation(algod, txId, 8)) as unknown as Record<
+      string,
+      unknown
+    >;
     const confirmedRoundRaw = confirmation["confirmed-round"] ?? confirmation.confirmedRound;
     confirmedRound = asFiniteNumber(confirmedRoundRaw) ?? confirmedRound;
     if (escrowAppId === undefined) {

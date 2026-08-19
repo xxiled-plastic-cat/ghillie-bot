@@ -1,4 +1,3 @@
-import algosdk from "algosdk";
 import {
   buildCancelOrderTxn,
   buildPlaceOrderTxns,
@@ -8,8 +7,16 @@ import {
   SIDE_NO,
   SIDE_YES,
 } from "@div3rsafi/sdk";
+import algosdk from "algosdk";
 
-import type { ActiveTargetState, BotState, ExecutionConfig, ExecutionResult, RequoteDecision, TopTarget } from "../types/execution.js";
+import type {
+  ActiveTargetState,
+  BotState,
+  ExecutionConfig,
+  ExecutionResult,
+  RequoteDecision,
+  TopTarget,
+} from "../types/execution.js";
 
 type BotAccount = {
   address: string;
@@ -29,7 +36,11 @@ function loadAccount(config: ExecutionConfig): BotAccount {
   }
 }
 
-function toActiveTargetState(target: TopTarget, orderIds: string[], mode: ExecutionConfig["executionMode"]): ActiveTargetState {
+function toActiveTargetState(
+  target: TopTarget,
+  orderIds: string[],
+  mode: ExecutionConfig["executionMode"],
+): ActiveTargetState {
   const now = new Date().toISOString();
   return {
     mode,
@@ -142,7 +153,12 @@ export async function executeDecision(
   if (decision.action === "skip") {
     return {
       state,
-      result: { mode: config.executionMode, action: "skipped", reason: decision.reason, activeOrderIds: state.activeTarget?.orderIds ?? [] },
+      result: {
+        mode: config.executionMode,
+        action: "skipped",
+        reason: decision.reason,
+        activeOrderIds: state.activeTarget?.orderIds ?? [],
+      },
     };
   }
 
@@ -152,7 +168,12 @@ export async function executeDecision(
     }
     return {
       state,
-      result: { mode: config.executionMode, action: "held", reason: decision.reason, activeOrderIds: state.activeTarget?.orderIds ?? [] },
+      result: {
+        mode: config.executionMode,
+        action: "held",
+        reason: decision.reason,
+        activeOrderIds: state.activeTarget?.orderIds ?? [],
+      },
     };
   }
 
@@ -161,7 +182,9 @@ export async function executeDecision(
 
   if (config.executionMode === "paper") {
     const paperOrderIds = [`paper-yes-${Date.now()}`, `paper-no-${Date.now()}`];
-    const previousKey = state.activeTarget ? `${state.activeTarget.marketId}:${state.activeTarget.strikeIndex}` : undefined;
+    const previousKey = state.activeTarget
+      ? `${state.activeTarget.marketId}:${state.activeTarget.strikeIndex}`
+      : undefined;
     state.activeTarget = toActiveTargetState(decision.topTarget, paperOrderIds, "paper");
     state.moveHistory.push({
       mode: "paper",
@@ -172,7 +195,12 @@ export async function executeDecision(
     });
     return {
       state,
-      result: { mode: "paper", action: "moved", reason: decision.reason, activeOrderIds: paperOrderIds },
+      result: {
+        mode: "paper",
+        action: "moved",
+        reason: decision.reason,
+        activeOrderIds: paperOrderIds,
+      },
     };
   }
 
@@ -185,9 +213,23 @@ export async function executeDecision(
   }
   await cancelOwnOpenOrders(api, algod, bot, decision.topTarget);
 
-  const yesOrderId = await placeBuyQuote(algod, bot, decision.topTarget, SIDE_YES, decision.topTarget.yesBuyPriceCents);
-  const noOrderId = await placeBuyQuote(algod, bot, decision.topTarget, SIDE_NO, decision.topTarget.noBuyPriceCents);
-  const previousKey = state.activeTarget ? `${state.activeTarget.marketId}:${state.activeTarget.strikeIndex}` : undefined;
+  const yesOrderId = await placeBuyQuote(
+    algod,
+    bot,
+    decision.topTarget,
+    SIDE_YES,
+    decision.topTarget.yesBuyPriceCents,
+  );
+  const noOrderId = await placeBuyQuote(
+    algod,
+    bot,
+    decision.topTarget,
+    SIDE_NO,
+    decision.topTarget.noBuyPriceCents,
+  );
+  const previousKey = state.activeTarget
+    ? `${state.activeTarget.marketId}:${state.activeTarget.strikeIndex}`
+    : undefined;
   state.activeTarget = toActiveTargetState(decision.topTarget, [yesOrderId, noOrderId], "live");
   state.moveHistory.push({
     mode: "live",
@@ -199,6 +241,11 @@ export async function executeDecision(
 
   return {
     state,
-    result: { mode: "live", action: "moved", reason: decision.reason, activeOrderIds: [yesOrderId, noOrderId] },
+    result: {
+      mode: "live",
+      action: "moved",
+      reason: decision.reason,
+      activeOrderIds: [yesOrderId, noOrderId],
+    },
   };
 }

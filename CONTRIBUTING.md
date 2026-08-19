@@ -31,17 +31,20 @@ Optional: Telegram and DigitalOcean Spaces. Without Spaces, bot state lands unde
 ## Checks before you open a PR
 
 ```bash
+npm run format:check
+npm run lint
 npm run typecheck
 npm test
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the same commands on every
 pull request and on pushes to `main` / `dev`: Node from `.nvmrc`, `npm ci`,
-`npm run typecheck`, `npm test`. CI does **not** run live Amarok MCP or
-zs-proxy smoke.
+`npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`. CI does
+**not** run live Amarok MCP or zs-proxy smoke.
 
-Format / lint tooling is not wired yet (see the development checklist). Match
-existing TypeScript style until those land.
+Format and lint use [Biome](https://biomejs.dev/). Apply fixes locally with
+`npm run format` or `npm run check -- --write` (format, lint, and import
+organization).
 
 - `npm test` mocks paid Amarok / ZeroSignal behavior and should **not** spend
   funds.

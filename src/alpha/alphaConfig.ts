@@ -140,7 +140,10 @@ function readBool(key: string, fallback: boolean): boolean {
   return raw.toLowerCase() === "true" || raw === "1";
 }
 
-function readCompetition(key: string, fallback: AlphaConfig["maxRewardCompetition"]): AlphaConfig["maxRewardCompetition"] {
+function readCompetition(
+  key: string,
+  fallback: AlphaConfig["maxRewardCompetition"],
+): AlphaConfig["maxRewardCompetition"] {
   const raw = process.env[key]?.toLowerCase();
   if (raw === "low" || raw === "medium" || raw === "high") return raw;
   return fallback;
@@ -154,10 +157,14 @@ function readPlanReviewReasoningEffort(): ZeroSignalReasoningEffort | undefined 
 
 export function readAlphaConfig(): AlphaConfig {
   const walletMnemonic = process.env.ALPHA_WALLET_MNEMONIC || undefined;
-  const derivedWalletAddress = walletMnemonic ? algosdk.mnemonicToSecretKey(walletMnemonic).addr.toString() : undefined;
+  const derivedWalletAddress = walletMnemonic
+    ? algosdk.mnemonicToSecretKey(walletMnemonic).addr.toString()
+    : undefined;
   return {
     amarokMcpUrl: process.env.AMAROK_MCP_URL || "https://amarok-mcp.compx.io/mcp",
-    maxDailyX402BaseUnits: BigInt(Math.max(0, Math.floor(readNumber("MAX_DAILY_X402_BASE_UNITS", 5_000_000)))),
+    maxDailyX402BaseUnits: BigInt(
+      Math.max(0, Math.floor(readNumber("MAX_DAILY_X402_BASE_UNITS", 5_000_000))),
+    ),
     apiKey: process.env.ALPHA_API_KEY || undefined,
     algodServer: process.env.ALPHA_ALGOD_SERVER || "https://mainnet-api.4160.nodely.io",
     algodToken: process.env.ALGORAND_TOKEN || undefined,
@@ -176,21 +183,45 @@ export function readAlphaConfig(): AlphaConfig {
     maxRewardCompetition: readCompetition("ALPHA_MAX_REWARD_COMPETITION", "medium"),
     enableRewardLane: readBool("ALPHA_ENABLE_REWARD_LANE", true),
     rewardRequireRealDaily: readBool("ALPHA_REWARD_REQUIRE_REAL_DAILY", true),
-    rewardTargetQuoteSizeUsd: readNumber("ALPHA_REWARD_TARGET_QUOTE_SIZE_USD", readNumber("ALPHA_TARGET_QUOTE_SIZE_USD", 3)),
-    rewardMinOrderSizeUsd: readNumber("ALPHA_REWARD_MIN_ORDER_SIZE_USD", readNumber("ALPHA_TARGET_QUOTE_SIZE_USD", 3)),
-    rewardMaxOrderSizeUsd: readNumber("ALPHA_REWARD_MAX_ORDER_SIZE_USD", readNumber("ALPHA_MAX_ORDER_SIZE_USD", 3)),
-    rewardMaxMarketExposureUsd: readNumber("ALPHA_REWARD_MAX_MARKET_EXPOSURE_USD", readNumber("ALPHA_MAX_MARKET_EXPOSURE_USD", 6)),
-    rewardMaxTotalExposureUsd: readNumber("ALPHA_REWARD_MAX_TOTAL_EXPOSURE_USD", readNumber("ALPHA_MAX_TOTAL_EXPOSURE_USD", 12)),
-    rewardMaxLiveOpenOrders: readInt("ALPHA_REWARD_MAX_LIVE_OPEN_ORDERS", readInt("ALPHA_MAX_LIVE_OPEN_ORDERS", 6)),
+    rewardTargetQuoteSizeUsd: readNumber(
+      "ALPHA_REWARD_TARGET_QUOTE_SIZE_USD",
+      readNumber("ALPHA_TARGET_QUOTE_SIZE_USD", 3),
+    ),
+    rewardMinOrderSizeUsd: readNumber(
+      "ALPHA_REWARD_MIN_ORDER_SIZE_USD",
+      readNumber("ALPHA_TARGET_QUOTE_SIZE_USD", 3),
+    ),
+    rewardMaxOrderSizeUsd: readNumber(
+      "ALPHA_REWARD_MAX_ORDER_SIZE_USD",
+      readNumber("ALPHA_MAX_ORDER_SIZE_USD", 3),
+    ),
+    rewardMaxMarketExposureUsd: readNumber(
+      "ALPHA_REWARD_MAX_MARKET_EXPOSURE_USD",
+      readNumber("ALPHA_MAX_MARKET_EXPOSURE_USD", 6),
+    ),
+    rewardMaxTotalExposureUsd: readNumber(
+      "ALPHA_REWARD_MAX_TOTAL_EXPOSURE_USD",
+      readNumber("ALPHA_MAX_TOTAL_EXPOSURE_USD", 12),
+    ),
+    rewardMaxLiveOpenOrders: readInt(
+      "ALPHA_REWARD_MAX_LIVE_OPEN_ORDERS",
+      readInt("ALPHA_MAX_LIVE_OPEN_ORDERS", 6),
+    ),
     rewardMaxLiveOrdersPerMarket: readInt(
       "ALPHA_REWARD_MAX_LIVE_ORDERS_PER_MARKET",
       readInt("ALPHA_MAX_LIVE_ORDERS_PER_MARKET", 2),
     ),
     minEdgeBps: readNumber("ALPHA_MIN_EDGE_BPS", 75),
     parityBufferBps: readNumber("ALPHA_PARITY_BUFFER_BPS", 75),
-    enableParityLane: readBool("ALPHA_ENABLE_PARITY_LANE", readBool("ALPHA_ENABLE_PARITY_ARB", false)),
+    enableParityLane: readBool(
+      "ALPHA_ENABLE_PARITY_LANE",
+      readBool("ALPHA_ENABLE_PARITY_ARB", false),
+    ),
     enableParityArb: readBool("ALPHA_ENABLE_PARITY_ARB", false),
-    parityMinTradeUsd: readNumber("ALPHA_PARITY_MIN_TRADE_USD", readNumber("ALPHA_PARITY_MIN_DEPTH_USD", 1)),
+    parityMinTradeUsd: readNumber(
+      "ALPHA_PARITY_MIN_TRADE_USD",
+      readNumber("ALPHA_PARITY_MIN_DEPTH_USD", 1),
+    ),
     parityMinEdgeBps: readNumber("ALPHA_PARITY_MIN_EDGE_BPS", 150),
     parityMaxTradeUsd: readNumber("ALPHA_PARITY_MAX_TRADE_USD", 1),
     parityMaxDailyUsd: readNumber("ALPHA_PARITY_MAX_DAILY_USD", 3),
@@ -203,10 +234,22 @@ export function readAlphaConfig(): AlphaConfig {
     enableSpreadLane: readBool("ALPHA_ENABLE_SPREAD_LANE", true),
     enableSpreadCapture: readBool("ALPHA_ENABLE_SPREAD_CAPTURE", true),
     actualRewardRefreshInLive: readBool("ALPHA_ACTUAL_REWARD_REFRESH_IN_LIVE", false),
-    spreadTargetOrderSizeUsd: readNumber("ALPHA_SPREAD_TARGET_ORDER_SIZE_USD", readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1)),
-    spreadMinOrderSizeUsd: readNumber("ALPHA_SPREAD_MIN_ORDER_SIZE_USD", readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1)),
-    spreadMaxOrderSizeUsd: readNumber("ALPHA_SPREAD_MAX_ORDER_SIZE_USD", readNumber("ALPHA_MAX_ORDER_SIZE_USD", 3)),
-    spreadOrderSizeUsd: readNumber("ALPHA_SPREAD_TARGET_ORDER_SIZE_USD", readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1)),
+    spreadTargetOrderSizeUsd: readNumber(
+      "ALPHA_SPREAD_TARGET_ORDER_SIZE_USD",
+      readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1),
+    ),
+    spreadMinOrderSizeUsd: readNumber(
+      "ALPHA_SPREAD_MIN_ORDER_SIZE_USD",
+      readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1),
+    ),
+    spreadMaxOrderSizeUsd: readNumber(
+      "ALPHA_SPREAD_MAX_ORDER_SIZE_USD",
+      readNumber("ALPHA_MAX_ORDER_SIZE_USD", 3),
+    ),
+    spreadOrderSizeUsd: readNumber(
+      "ALPHA_SPREAD_TARGET_ORDER_SIZE_USD",
+      readNumber("ALPHA_SPREAD_ORDER_SIZE_USD", 1),
+    ),
     minSpreadCaptureCents: readNumber("ALPHA_MIN_SPREAD_CAPTURE_CENTS", 1),
     minSpreadVolumeUsd: readNumber("ALPHA_MIN_SPREAD_VOLUME_USD", 1),
     minSpreadDepthUsd: readNumber("ALPHA_MIN_SPREAD_DEPTH_USD", 0.25),
@@ -236,8 +279,14 @@ export function readAlphaConfig(): AlphaConfig {
       "ALPHA_SPREAD_MAX_MARKET_EXPOSURE_USD",
       readNumber("ALPHA_MAX_SPREAD_MARKET_EXPOSURE_USD", 2),
     ),
-    spreadMaxTotalExposureUsd: readNumber("ALPHA_SPREAD_MAX_TOTAL_EXPOSURE_USD", readNumber("ALPHA_MAX_TOTAL_EXPOSURE_USD", 12)),
-    spreadMaxLiveOpenOrders: readInt("ALPHA_SPREAD_MAX_LIVE_OPEN_ORDERS", readInt("ALPHA_MAX_LIVE_OPEN_ORDERS", 6)),
+    spreadMaxTotalExposureUsd: readNumber(
+      "ALPHA_SPREAD_MAX_TOTAL_EXPOSURE_USD",
+      readNumber("ALPHA_MAX_TOTAL_EXPOSURE_USD", 12),
+    ),
+    spreadMaxLiveOpenOrders: readInt(
+      "ALPHA_SPREAD_MAX_LIVE_OPEN_ORDERS",
+      readInt("ALPHA_MAX_LIVE_OPEN_ORDERS", 6),
+    ),
     spreadMaxLiveOrdersPerMarket: readInt(
       "ALPHA_SPREAD_MAX_LIVE_ORDERS_PER_MARKET",
       readInt("ALPHA_MAX_LIVE_ORDERS_PER_MARKET", 2),
@@ -275,7 +324,8 @@ export function validateLiveConfig(config: AlphaConfig): void {
   if (!config.enableLiveTrading) failures.push("ALPHA_ENABLE_LIVE_TRADING must be true");
   if (!config.confirmRisk) failures.push("ALPHA_CONFIRM_RISK must be true");
   if (!config.amarokMcpUrl) failures.push("AMAROK_MCP_URL is required");
-  if (!config.walletAddress) failures.push("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required");
+  if (!config.walletAddress)
+    failures.push("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required");
   if (!config.walletMnemonic) failures.push("ALPHA_WALLET_MNEMONIC is required");
   if (failures.length > 0) {
     throw new Error(`Live mode refused to start:\n- ${failures.join("\n- ")}`);

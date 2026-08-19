@@ -104,7 +104,8 @@ export class AlgorandPaymentBuilder implements PaymentBuilder {
     }
 
     const accepted = paymentRequest.accepts.find(
-      (candidate) => candidate.network === ALGORAND_MAINNET_NETWORK && candidate.asset === MAINNET_USDC_ASSET_ID,
+      (candidate) =>
+        candidate.network === ALGORAND_MAINNET_NETWORK && candidate.asset === MAINNET_USDC_ASSET_ID,
     );
     if (!accepted) {
       throw new Error("No approved Algorand USDC payment option was offered");
@@ -132,7 +133,9 @@ export class AlgorandPaymentBuilder implements PaymentBuilder {
     }
     const amount = BigInt(amountValue);
     if (amount <= 0n || amount > endpointCeiling) {
-      throw new Error(`x402 payment ${amount.toString()} exceeds the ${resourceUrl.pathname} endpoint ceiling`);
+      throw new Error(
+        `x402 payment ${amount.toString()} exceeds the ${resourceUrl.pathname} endpoint ceiling`,
+      );
     }
     this.resetDailySpendIfNeeded();
     const dailyLimit = this.policy.maxDailyBaseUnits ?? 5_000_000n;

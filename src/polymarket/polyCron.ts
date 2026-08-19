@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-
-import cron from "node-cron";
 import dotenv from "dotenv";
-import { notifyTelegram, notifyTelegramThrottled, readSkipNoticeThrottleMinutes } from "../alpha/telegramNotifier.js";
+import cron from "node-cron";
+import {
+  notifyTelegram,
+  notifyTelegramThrottled,
+  readSkipNoticeThrottleMinutes,
+} from "../alpha/telegramNotifier.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 dotenv.config();
@@ -112,7 +115,9 @@ async function main(): Promise<void> {
     lastTickExitCode = exitCode;
     console.log(`[${lastTickEndedAt}] poly cron tick end exit_code=${exitCode}`);
     if (exitCode !== 0) {
-      await notifyTelegram(`ALERT: Ghillie polymarket cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
+      await notifyTelegram(
+        `ALERT: Ghillie polymarket cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`,
+      );
     }
     running = false;
   });

@@ -11,13 +11,13 @@ import {
   normalizeAgentResponse,
   parseInferenceCostFromHeaders,
   prepareAgentTools,
+  type ResponsesClient,
   readZeroSignalConfig,
   runResponsesToolLoop,
   selectAgentResearchTools,
   summarizeInferenceCosts,
   withStreamTrue,
   zsProxyHealthzUrl,
-  type ResponsesClient,
 } from "./index.js";
 
 test("readZeroSignalConfig defaults to local zs-proxy", () => {
@@ -31,10 +31,7 @@ test("readZeroSignalConfig defaults to local zs-proxy", () => {
 });
 
 test("zsProxyHealthzUrl maps /v1 to /healthz", () => {
-  assert.equal(
-    zsProxyHealthzUrl("http://127.0.0.1:8080/v1"),
-    "http://127.0.0.1:8080/healthz",
-  );
+  assert.equal(zsProxyHealthzUrl("http://127.0.0.1:8080/v1"), "http://127.0.0.1:8080/healthz");
 });
 
 test("parseInferenceCostFromHeaders reads X-Zs-Inference-Amount", () => {
@@ -66,24 +63,15 @@ test("summarizeInferenceCosts sums charges across requests", () => {
 });
 
 test("parseInferenceCostFromHeaders skips missing amount", () => {
-  assert.equal(
-    parseInferenceCostFromHeaders(new Headers({ "x-zs-other": "1" })),
-    undefined,
-  );
+  assert.equal(parseInferenceCostFromHeaders(new Headers({ "x-zs-other": "1" })), undefined);
   assert.equal(summarizeInferenceCosts([]), undefined);
   assert.equal(formatInferenceCostLine(undefined), undefined);
 });
 
 test("assertZsResponseRequest requires store:false and blocks previous_response_id", () => {
   assert.doesNotThrow(() => assertZsResponseRequest({ store: false, model: "x" }));
-  assert.throws(
-    () => assertZsResponseRequest({ model: "x" }),
-    /store: false/,
-  );
-  assert.throws(
-    () => assertZsResponseRequest({ store: true, model: "x" }),
-    /store: false/,
-  );
+  assert.throws(() => assertZsResponseRequest({ model: "x" }), /store: false/);
+  assert.throws(() => assertZsResponseRequest({ store: true, model: "x" }), /store: false/);
   assert.throws(
     () =>
       assertZsResponseRequest({

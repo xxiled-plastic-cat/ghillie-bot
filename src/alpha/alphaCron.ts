@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-
-import cron from "node-cron";
 import dotenv from "dotenv";
-import { notifyTelegram, notifyTelegramThrottled, readSkipNoticeThrottleMinutes } from "./telegramNotifier.js";
+import cron from "node-cron";
+import { isDebugModeEnabled } from "../utils/debugMode.js";
 import { TelegramBotClient } from "./telegramBotClient.js";
 import {
   consoleTelegramLogger,
@@ -13,7 +12,11 @@ import {
   startTelegramCommandLoop,
   type TelegramCommandLoop,
 } from "./telegramCommands.js";
-import { isDebugModeEnabled } from "../utils/debugMode.js";
+import {
+  notifyTelegram,
+  notifyTelegramThrottled,
+  readSkipNoticeThrottleMinutes,
+} from "./telegramNotifier.js";
 
 dotenv.config();
 
@@ -152,7 +155,9 @@ async function main(): Promise<void> {
     logStartupDebug(`tick scheduled end at=${lastTickEndedAt} exitCode=${exitCode}`);
     console.log(`[${lastTickEndedAt}] cron tick end exit_code=${exitCode}`);
     if (exitCode !== 0) {
-      await notifyTelegram(`ALERT: Ghillie cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`);
+      await notifyTelegram(
+        `ALERT: Ghillie cron tick failed\nat=${lastTickEndedAt}\nexit_code=${exitCode}`,
+      );
     }
     running = false;
   });

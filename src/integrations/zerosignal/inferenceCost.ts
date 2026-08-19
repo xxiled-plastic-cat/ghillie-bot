@@ -71,9 +71,7 @@ export function formatInferenceCostLine(
   return `ZeroSignal inference: ${summary.requestCount} request(s), $${summary.totalUsdc} USDC`;
 }
 
-function collectZsHeaders(
-  headers: Headers | Record<string, string>,
-): Record<string, string> {
+function collectZsHeaders(headers: Headers | Record<string, string>): Record<string, string> {
   const collected: Record<string, string> = {};
   if (headers instanceof Headers) {
     headers.forEach((value, key) => {
@@ -91,10 +89,7 @@ function collectZsHeaders(
   return collected;
 }
 
-function lookupHeader(
-  headers: Headers | Record<string, string>,
-  name: string,
-): string | undefined {
+function lookupHeader(headers: Headers | Record<string, string>, name: string): string | undefined {
   if (headers instanceof Headers) {
     return headers.get(name) ?? undefined;
   }

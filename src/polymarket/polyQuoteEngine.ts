@@ -1,6 +1,6 @@
 import type { PolyConfig } from "./polyConfig.js";
-import type { PolyParityPlan, PolyScanResult } from "./polyTypes.js";
 import type { PolyPaperModelState, PolyPaperQuote } from "./polyPaperTypes.js";
+import type { PolyParityPlan, PolyScanResult } from "./polyTypes.js";
 
 function quoteSize(price: number, notionalUsd: number): number | undefined {
   if (!Number.isFinite(price) || price <= 0 || price >= 1) return undefined;
@@ -12,12 +12,22 @@ function makeQuoteId(parts: string[]): string {
   return `${parts.join(":")}:${Date.now()}`;
 }
 
-function canOpenMore(state: PolyPaperModelState, lane: PolyPaperQuote["lane"], config: PolyConfig): boolean {
-  const openForLane = state.openOrders.filter((order) => order.status === "open" && order.lane === lane).length;
+function canOpenMore(
+  state: PolyPaperModelState,
+  lane: PolyPaperQuote["lane"],
+  config: PolyConfig,
+): boolean {
+  const openForLane = state.openOrders.filter(
+    (order) => order.status === "open" && order.lane === lane,
+  ).length;
   return openForLane < config.paperMaxOpenOrdersPerLane;
 }
 
-export function buildRewardQuotes(scan: PolyScanResult, state: PolyPaperModelState, config: PolyConfig): PolyPaperQuote[] {
+export function buildRewardQuotes(
+  scan: PolyScanResult,
+  state: PolyPaperModelState,
+  config: PolyConfig,
+): PolyPaperQuote[] {
   if (!config.enableRewardLane) return [];
   const quotes: PolyPaperQuote[] = [];
   for (const market of scan.rewardMarkets) {
@@ -52,7 +62,11 @@ export function buildRewardQuotes(scan: PolyScanResult, state: PolyPaperModelSta
   return quotes;
 }
 
-export function buildSpreadQuotes(scan: PolyScanResult, state: PolyPaperModelState, config: PolyConfig): PolyPaperQuote[] {
+export function buildSpreadQuotes(
+  scan: PolyScanResult,
+  state: PolyPaperModelState,
+  config: PolyConfig,
+): PolyPaperQuote[] {
   if (!config.enableSpreadLane) return [];
   const quotes: PolyPaperQuote[] = [];
   for (const market of scan.markets) {
@@ -64,7 +78,13 @@ export function buildSpreadQuotes(scan: PolyScanResult, state: PolyPaperModelSta
       { token: pair.noToken, book: pair.noBook },
     ]) {
       if (!canOpenMore(state, "spread", config)) break;
-      if (!tokenAndBook.token || !tokenAndBook.book || tokenAndBook.book.bestBid === undefined || tokenAndBook.book.bestAsk === undefined) continue;
+      if (
+        !tokenAndBook.token ||
+        !tokenAndBook.book ||
+        tokenAndBook.book.bestBid === undefined ||
+        tokenAndBook.book.bestAsk === undefined
+      )
+        continue;
       const spreadCents = (tokenAndBook.book.bestAsk - tokenAndBook.book.bestBid) * 100;
       if (spreadCents < config.minSpreadCaptureCents) continue;
       const size = quoteSize(tokenAndBook.book.bestBid, config.paperSpreadOrderSizeUsd);

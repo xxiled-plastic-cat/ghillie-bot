@@ -45,17 +45,12 @@ export function readSkipNoticeThrottleMinutes(): number {
 
 /** Escape dynamic free text so it cannot break Telegram Rich Markdown (GFM-like). */
 export function escapeRichMarkdown(text: string): string {
-  return [...text]
-    .map((ch) => ("\\`*_[]()#|>~".includes(ch) ? `\\${ch}` : ch))
-    .join("");
+  return [...text].map((ch) => ("\\`*_[]()#|>~".includes(ch) ? `\\${ch}` : ch)).join("");
 }
 
 /** Escape dynamic text for Telegram HTML parse_mode. */
 export function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 export function truncateTelegramText(value: string, length: number): string {
@@ -97,7 +92,10 @@ async function postTelegram(
   }
 }
 
-export async function notifyTelegram(text: string, options: TelegramNotifyOptions = {}): Promise<boolean> {
+export async function notifyTelegram(
+  text: string,
+  options: TelegramNotifyOptions = {},
+): Promise<boolean> {
   const { token, chatId, disabled } = readTelegramConfig();
   if (disabled || !token || !chatId) return false;
 

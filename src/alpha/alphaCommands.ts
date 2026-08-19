@@ -1,12 +1,7 @@
-import dotenv from "dotenv";
 import algosdk from "algosdk";
-
+import dotenv from "dotenv";
+import { isDebugModeEnabled } from "../utils/debugMode.js";
 import { AlphaSdkClient } from "./alphaClient.js";
-import { loadAlphaScan, loadAmarokMarket, type AlphaScanResult } from "./alphaMarketScanner.js";
-import { rankRewardCandidates } from "./alphaRewardScanner.js";
-import { scanParity } from "./alphaParityScanner.js";
-import { saveAlphaState, loadAlphaState } from "./alphaStateStore.js";
-import { loadAlphaConfig } from "./laneOverrideStore.js";
 import {
   printLiveSummary,
   printMarketDetail,
@@ -16,10 +11,23 @@ import {
   printScan,
   summarizeLiveExposure,
 } from "./alphaFormatter.js";
+import { loadAlphaScan, loadAmarokMarket } from "./alphaMarketScanner.js";
+import { scanParity } from "./alphaParityScanner.js";
+import { runResolvedAssetCleanup } from "./alphaResolvedAssetCleanup.js";
+import { rankRewardCandidates } from "./alphaRewardScanner.js";
+import { loadAlphaState, saveAlphaState } from "./alphaStateStore.js";
 import type { AlphaBotState } from "./alphaTypes.js";
-import { runPaperTick, loadPaperReport } from "./paperTrader.js";
+import {
+  ALPHA_REWARD_HISTORY_SENDER,
+  buildCapitalLedger,
+  mergeCapitalLedgerIntoState,
+  printCapitalLedgerReport,
+} from "./capitalLedger.js";
+import { formatMicroUsdc, scanWalletUsdcTransfers } from "./indexerTransfers.js";
+import { loadAlphaConfig } from "./laneOverrideStore.js";
 import type { LiveAction } from "./liveTrader.js";
 import { runLiveTick } from "./liveTrader.js";
+import { loadPaperReport, runPaperTick } from "./paperTrader.js";
 import {
   notifyTelegramReport,
   notifyTelegramThrottled,
@@ -30,18 +38,22 @@ import {
   formatTickDigestReport,
   rewardContextFromScan,
 } from "./telegramReports.js";
-import { runResolvedAssetCleanup } from "./alphaResolvedAssetCleanup.js";
-import { buildCapitalLedger, mergeCapitalLedgerIntoState, printCapitalLedgerReport, ALPHA_REWARD_HISTORY_SENDER } from "./capitalLedger.js";
-import { formatMicroUsdc, scanWalletUsdcTransfers } from "./indexerTransfers.js";
-import { isDebugModeEnabled } from "../utils/debugMode.js";
 
 dotenv.config();
 
-const DEFAULT_REWARD_HISTORY_RECEIVER = "65GJKPMEYLR2C2GHFIAUKF2CFDE6IXDB3LUTOVJ424LBMMEWJ6UXCHCBZQ";
+const DEFAULT_REWARD_HISTORY_RECEIVER =
+  "65GJKPMEYLR2C2GHFIAUKF2CFDE6IXDB3LUTOVJ424LBMMEWJ6UXCHCBZQ";
 
-async function runRewardHistoryCommand(receiverArg: string | undefined, senderArg: string | undefined): Promise<void> {
+async function runRewardHistoryCommand(
+  receiverArg: string | undefined,
+  senderArg: string | undefined,
+): Promise<void> {
   const config = await loadAlphaConfig();
-  const receiver = (receiverArg || process.env.ALPHA_REWARD_HISTORY_RECEIVER || DEFAULT_REWARD_HISTORY_RECEIVER).trim();
+  const receiver = (
+    receiverArg ||
+    process.env.ALPHA_REWARD_HISTORY_RECEIVER ||
+    DEFAULT_REWARD_HISTORY_RECEIVER
+  ).trim();
   const sender = (senderArg || ALPHA_REWARD_HISTORY_SENDER).trim();
   if (!algosdk.isValidAddress(receiver)) {
     throw new Error(`Invalid Algorand receiver address for rewards history: ${receiver}`);
@@ -83,13 +95,19 @@ async function runCapitalReportCommand(): Promise<void> {
   const config = await loadAlphaConfig();
   const walletAddress = config.walletAddress;
   if (!walletAddress || !algosdk.isValidAddress(walletAddress)) {
-    throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for capital-report");
+    throw new Error(
+      "ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for capital-report",
+    );
   }
 
   const client = new AlphaSdkClient(config, false);
   const state = await loadAlphaState(config.stateKey, config.paperStartingBalanceUsd);
   const scan = await loadAlphaScan(config);
-  const markets = [...new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market])).values()];
+  const markets = [
+    ...new Map(
+      [...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market]),
+    ).values(),
+  ];
   const marketAppIds = markets.map((market) => market.marketAppId);
 
   let walletUsdc: number | undefined;
@@ -97,12 +115,16 @@ async function runCapitalReportCommand(): Promise<void> {
   try {
     walletUsdc = await client.getUsdcBalance(walletAddress);
   } catch (error) {
-    console.warn(`Wallet USDC unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(
+      `Wallet USDC unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   try {
     walletOrders = await client.getWalletOpenOrders(walletAddress);
   } catch (error) {
-    console.warn(`Wallet open orders unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(
+      `Wallet open orders unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const exposure = summarizeLiveExposure(state, config, { walletAddress });
@@ -193,8 +215,14 @@ function parseCancelOrderArgs(args: string[]): CancelOrderArgs {
     if (Number.isFinite(num) && String(num) === arg.trim()) parsed.marketAppId = num;
     else parsed.slug = arg.trim();
   }
-  if (parsed.marketAppId === undefined && parsed.slug === undefined && parsed.escrowAppId === undefined) {
-    throw new Error("Usage: npm run alpha:cancel-order -- <marketAppId|slug> [--escrow <escrowAppId>] [--execute]");
+  if (
+    parsed.marketAppId === undefined &&
+    parsed.slug === undefined &&
+    parsed.escrowAppId === undefined
+  ) {
+    throw new Error(
+      "Usage: npm run alpha:cancel-order -- <marketAppId|slug> [--escrow <escrowAppId>] [--execute]",
+    );
   }
   return parsed;
 }
@@ -204,7 +232,9 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
   const config = await loadAlphaConfig();
   const walletAddress = config.walletAddress;
   if (!walletAddress || !algosdk.isValidAddress(walletAddress)) {
-    throw new Error("ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for cancel-order");
+    throw new Error(
+      "ALPHA_WALLET_ADDRESS or a mnemonic-derived address is required for cancel-order",
+    );
   }
   if (parsed.execute && !config.walletMnemonic) {
     throw new Error("ALPHA_WALLET_MNEMONIC is required to --execute a cancel");
@@ -229,8 +259,12 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
   console.log("GHILLIE ALPHA CANCEL ORDER");
   console.log("");
   console.log(`Wallet: ${walletAddress}`);
-  console.log(`Filter: marketAppId=${marketAppId ?? "any"} escrowAppId=${parsed.escrowAppId ?? "any"}`);
-  console.log(`Mode: ${parsed.execute ? "EXECUTE (live on-chain cancel)" : "dry-run (no changes)"}`);
+  console.log(
+    `Filter: marketAppId=${marketAppId ?? "any"} escrowAppId=${parsed.escrowAppId ?? "any"}`,
+  );
+  console.log(
+    `Mode: ${parsed.execute ? "EXECUTE (live on-chain cancel)" : "dry-run (no changes)"}`,
+  );
   console.log(`Matching open orders: ${matches.length}`);
   console.log("");
 
@@ -278,12 +312,16 @@ async function runCancelOrderCommand(args: string[]): Promise<void> {
             state.cancelledOrders.push({ ...tracked });
           }
         }
-        console.log(`[CANCELLED] escrowAppId=${order.escrowAppId} (marketAppId=${order.marketAppId})`);
+        console.log(
+          `[CANCELLED] escrowAppId=${order.escrowAppId} (marketAppId=${order.marketAppId})`,
+        );
       } else {
         console.log(`[FAILED] escrowAppId=${order.escrowAppId}: cancel returned success=false`);
       }
     } catch (error) {
-      console.log(`[FAILED] escrowAppId=${order.escrowAppId}: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(
+        `[FAILED] escrowAppId=${order.escrowAppId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   state.openOrders = state.openOrders.filter((order) => order.status === "open");
@@ -322,7 +360,9 @@ async function buildScan(liveSigner = false) {
   logStartupDebug(
     `buildScan scan loaded markets=${scan.markets.length} rewardMarkets=${scan.rewardMarkets.length} orderbooks=${scan.orderbooks.size} rewardError=${scan.rewardError ?? "none"}`,
   );
-  const uniqueMarkets = new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market]));
+  const uniqueMarkets = new Map(
+    [...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market]),
+  );
   const allMarkets = [...uniqueMarkets.values()];
   logStartupDebug(`buildScan unique markets prepared count=${allMarkets.length}`);
   const rewardCandidates = rankRewardCandidates(allMarkets, scan.orderbooks, config);
@@ -459,7 +499,13 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
     console.log(`[${action.kind.toUpperCase()}] ${action.message}`);
   }
   if (result.actions.length === 0) console.log("No actions.");
-  printLiveSummary(result.state, result.walletUsdcBalanceUsd, result.walletAlgoBalance, config, rewardContextFromScan(scan, config.walletAddress));
+  printLiveSummary(
+    result.state,
+    result.walletUsdcBalanceUsd,
+    result.walletAlgoBalance,
+    config,
+    rewardContextFromScan(scan, config.walletAddress),
+  );
   if (mode === "live") {
     try {
       const { buildAlphaDashboardSnapshot } = await import("./alphaDashboardData.js");
@@ -491,7 +537,8 @@ function parseResolvedAssetCleanupArgs(args: string[]): ResolvedAssetCleanupArgs
       const value = args[i + 1];
       if (!value) throw new Error("Missing value for --limit");
       const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`Invalid --limit value: ${value}`);
+      if (!Number.isFinite(parsed) || parsed <= 0)
+        throw new Error(`Invalid --limit value: ${value}`);
       limit = parsed;
       i += 1;
       continue;
@@ -499,7 +546,8 @@ function parseResolvedAssetCleanupArgs(args: string[]): ResolvedAssetCleanupArgs
     if (arg.startsWith("--limit=")) {
       const value = arg.slice("--limit=".length);
       const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`Invalid --limit value: ${value}`);
+      if (!Number.isFinite(parsed) || parsed <= 0)
+        throw new Error(`Invalid --limit value: ${value}`);
       limit = parsed;
       continue;
     }
@@ -529,7 +577,8 @@ async function main(): Promise<void> {
   );
   if (command === "scan") return runScanCommand();
   if (command === "rewards") return runRewardsCommand();
-  if (command === "reward-history") return runRewardHistoryCommand(process.argv[3], process.argv[4]);
+  if (command === "reward-history")
+    return runRewardHistoryCommand(process.argv[3], process.argv[4]);
   if (command === "capital-report") return runCapitalReportCommand();
   if (command === "watch") return runPaperWatchCommand();
   if (command === "market") return runMarketCommand(process.argv[3]);
@@ -538,17 +587,22 @@ async function main(): Promise<void> {
   if (command === "paper-report") return runPaperReportCommand();
   if (command === "live-dry-run") return runLiveCommand("live-dry-run");
   if (command === "live") return runLiveCommand("live");
-  if (command === "resolved-asset-cleanup") return runResolvedAssetCleanupCommand(process.argv.slice(3));
+  if (command === "resolved-asset-cleanup")
+    return runResolvedAssetCleanupCommand(process.argv.slice(3));
   if (command === "cancel-order") return runCancelOrderCommand(process.argv.slice(3));
   printUsage();
   process.exitCode = 1;
 }
 
-void main().catch((error) => {
-  const message = formatError(error);
-  logStartupDebug(`main failed message=${message}`);
-  console.error(message);
-  process.exitCode = 1;
-}).finally(() => {
-  logStartupDebug(`main finally command=${process.argv[2] ?? "none"} exitCode=${process.exitCode ?? 0}`);
-});
+void main()
+  .catch((error) => {
+    const message = formatError(error);
+    logStartupDebug(`main failed message=${message}`);
+    console.error(message);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    logStartupDebug(
+      `main finally command=${process.argv[2] ?? "none"} exitCode=${process.exitCode ?? 0}`,
+    );
+  });

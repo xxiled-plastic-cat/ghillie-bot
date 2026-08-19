@@ -1,7 +1,14 @@
-import type { AlphaConfig } from "./alphaConfig.js";
 import { roundShares } from "./alphaClient.js";
+import type { AlphaConfig } from "./alphaConfig.js";
+import {
+  type AlphaBotState,
+  type AlphaMarket,
+  type AlphaOrderbook,
+  type AlphaOutcome,
+  type AlphaQuote,
+  POOL_FALLBACK_DAILY_REWARD_SOURCE,
+} from "./alphaTypes.js";
 import { getPosition } from "./inventoryView.js";
-import { POOL_FALLBACK_DAILY_REWARD_SOURCE, type AlphaBotState, type AlphaMarket, type AlphaOrderbook, type AlphaOutcome, type AlphaQuote } from "./alphaTypes.js";
 
 const CONTROLLED_UNDERWATER_EXIT_REASON = "controlled underwater exit";
 
@@ -20,13 +27,19 @@ export function rewardLaneAllowsMarket(market: AlphaMarket, config: AlphaConfig)
   return market.reward.dailyRewardsSource !== POOL_FALLBACK_DAILY_REWARD_SOURCE;
 }
 
-function getOutcomeBook(book: AlphaOrderbook, outcome: AlphaOutcome): { bid?: number; ask?: number; mid?: number; spread?: number } {
+function getOutcomeBook(
+  book: AlphaOrderbook,
+  outcome: AlphaOutcome,
+): { bid?: number; ask?: number; mid?: number; spread?: number } {
   return outcome === "YES"
     ? { bid: book.yesBid, ask: book.yesAsk, mid: book.yesMid, spread: book.yesSpread }
     : { bid: book.noBid, ask: book.noAsk, mid: book.noMid, spread: book.noSpread };
 }
 
-function quoteSize(price: number, notionalUsd: number): { sizeShares: number; notionalUsd: number } | undefined {
+function quoteSize(
+  price: number,
+  notionalUsd: number,
+): { sizeShares: number; notionalUsd: number } | undefined {
   if (price <= 0 || price >= 1) return undefined;
   const sizeShares = roundShares(notionalUsd / price);
   if (sizeShares <= 0) return undefined;
@@ -54,22 +67,43 @@ function positionShares(state: AlphaBotState, marketAppId: number, outcome: Alph
   return outcome === "YES" ? position.yesShares : position.noShares;
 }
 
-function positionAverageCost(state: AlphaBotState, marketAppId: number, outcome: AlphaOutcome): number | undefined {
+function positionAverageCost(
+  state: AlphaBotState,
+  marketAppId: number,
+  outcome: AlphaOutcome,
+): number | undefined {
   const position = getPosition(state, marketAppId);
   if (!position) return undefined;
   const averageCost = outcome === "YES" ? position.avgYesCost : position.avgNoCost;
   return averageCost > 0 ? averageCost : undefined;
 }
 
-function outcomeAgeSeconds(state: AlphaBotState, marketAppId: number, outcome: AlphaOutcome, now = Date.now()): number | undefined {
+function outcomeAgeSeconds(
+  state: AlphaBotState,
+  marketAppId: number,
+  outcome: AlphaOutcome,
+  now = Date.now(),
+): number | undefined {
   const timestamps: number[] = [];
   for (const order of state.openOrders) {
-    if (order.runMode !== "live" || order.marketAppId !== marketAppId || order.outcome !== outcome || order.side !== "bid") continue;
+    if (
+      order.runMode !== "live" ||
+      order.marketAppId !== marketAppId ||
+      order.outcome !== outcome ||
+      order.side !== "bid"
+    )
+      continue;
     const created = Date.parse(order.createdAt);
     if (Number.isFinite(created)) timestamps.push(created);
   }
   for (const fill of state.fills) {
-    if (fill.runMode !== "live" || fill.marketAppId !== marketAppId || fill.outcome !== outcome || fill.side !== "bid") continue;
+    if (
+      fill.runMode !== "live" ||
+      fill.marketAppId !== marketAppId ||
+      fill.outcome !== outcome ||
+      fill.side !== "bid"
+    )
+      continue;
     const when = Date.parse(fill.updatedAt ?? fill.createdAt);
     if (Number.isFinite(when)) timestamps.push(when);
   }
@@ -100,8 +134,17 @@ function existingControlledMarketLossUsd(state: AlphaBotState, marketAppId: numb
     }, 0);
 }
 
-function insideSpreadBid(book: { bid?: number; ask?: number; mid?: number; spread?: number }, config: AlphaConfig): number | undefined {
-  if (!config.enableSpreadCapture || book.bid === undefined || book.ask === undefined || book.mid === undefined || book.spread === undefined) {
+function insideSpreadBid(
+  book: { bid?: number; ask?: number; mid?: number; spread?: number },
+  config: AlphaConfig,
+): number | undefined {
+  if (
+    !config.enableSpreadCapture ||
+    book.bid === undefined ||
+    book.ask === undefined ||
+    book.mid === undefined ||
+    book.spread === undefined
+  ) {
     return undefined;
   }
   if (book.spread * 100 < config.minSpreadCaptureCents) return undefined;
@@ -116,13 +159,20 @@ function insideSpreadAsk(
   config: AlphaConfig,
   options: { requireSpreadCapture: boolean } = { requireSpreadCapture: true },
 ): number | undefined {
-  if ((options.requireSpreadCapture && !config.enableSpreadCapture) || book.bid === undefined || book.mid === undefined) {
+  if (
+    (options.requireSpreadCapture && !config.enableSpreadCapture) ||
+    book.bid === undefined ||
+    book.mid === undefined
+  ) {
     return undefined;
   }
   // When there is no visible ask side, still post an unwind ask above best bid
   // so inventory can start offloading instead of waiting for a full two-sided book.
   if (book.ask === undefined || book.spread === undefined) {
-    const syntheticAsk = Math.min(0.999999, Math.max(book.mid + config.spreadExitEdgeCents / 100, book.bid + 0.000001));
+    const syntheticAsk = Math.min(
+      0.999999,
+      Math.max(book.mid + config.spreadExitEdgeCents / 100, book.bid + 0.000001),
+    );
     return syntheticAsk > book.bid ? syntheticAsk : undefined;
   }
   const edge = Math.min(config.spreadExitEdgeCents / 100, book.spread / 4);
@@ -146,13 +196,20 @@ export function generateQuotes(
     const outcomeBook = getOutcomeBook(book, outcome);
     const midpoint = outcomeBook.mid;
     if (midpoint === undefined) continue;
-    const rewardSpread = market.reward.maxRewardSpreadCents !== undefined ? market.reward.maxRewardSpreadCents / 100 : undefined;
-    const rewardMinContracts = market.reward.isRewardMarket ? market.reward.minContracts : undefined;
+    const rewardSpread =
+      market.reward.maxRewardSpreadCents !== undefined
+        ? market.reward.maxRewardSpreadCents / 100
+        : undefined;
+    const rewardMinContracts = market.reward.isRewardMarket
+      ? market.reward.minContracts
+      : undefined;
     const rewardBuffer = config.rewardZoneBufferCents / 100;
     const spread = outcomeBook.spread;
     const rewardMidpointAllowed = midpoint >= config.minMidpoint && midpoint <= config.maxMidpoint;
-    const spreadEntryMidpointAllowed = midpoint >= config.minSpreadEntryMidpoint && midpoint <= config.maxSpreadMidpoint;
-    const spreadExitMidpointAllowed = midpoint >= config.minSpreadExitMidpoint && midpoint <= config.maxSpreadMidpoint;
+    const spreadEntryMidpointAllowed =
+      midpoint >= config.minSpreadEntryMidpoint && midpoint <= config.maxSpreadMidpoint;
+    const spreadExitMidpointAllowed =
+      midpoint >= config.minSpreadExitMidpoint && midpoint <= config.maxSpreadMidpoint;
     let bid =
       rewardLaneEnabled && rewardLaneMarket && rewardSpread !== undefined && rewardMidpointAllowed
         ? midpoint - rewardBuffer
@@ -164,7 +221,9 @@ export function generateQuotes(
       bid !== undefined &&
       bid > 0 &&
       (rewardSpread === undefined || Math.abs(midpoint - bid) <= rewardSpread) &&
-      (spread === undefined || spread * 100 >= config.minMakerSpreadCents || market.reward.isRewardMarket)
+      (spread === undefined ||
+        spread * 100 >= config.minMakerSpreadCents ||
+        market.reward.isRewardMarket)
     ) {
       const rewardEligible =
         market.reward.isRewardMarket &&
@@ -190,7 +249,9 @@ export function generateQuotes(
             );
       const sized = rewardNotionalUsd === undefined ? undefined : quoteSize(bid, rewardNotionalUsd);
       const meetsMinContracts =
-        !rewardEligible || rewardMinContracts === undefined || (sized !== undefined && sized.sizeShares + 1e-9 >= rewardMinContracts);
+        !rewardEligible ||
+        rewardMinContracts === undefined ||
+        (sized !== undefined && sized.sizeShares + 1e-9 >= rewardMinContracts);
       if (sized && meetsMinContracts) {
         quotes.push({
           id: `${market.marketAppId}:${outcome}:bid:${Date.now()}`,
@@ -202,9 +263,12 @@ export function generateQuotes(
           side: "bid",
           price: bid,
           ...sized,
-          reason: rewardEligible ? "reward-zone bid near midpoint; market minimum checked in aggregate" : "spread-capture bid",
+          reason: rewardEligible
+            ? "reward-zone bid near midpoint; market minimum checked in aggregate"
+            : "spread-capture bid",
           rewardEligible,
-          rewardZoneDistanceCents: rewardSpread !== undefined ? Math.abs(midpoint - bid) * 100 : undefined,
+          rewardZoneDistanceCents:
+            rewardSpread !== undefined ? Math.abs(midpoint - bid) * 100 : undefined,
           rewardMinContracts,
           estimatedRewardUsdPerDay: market.reward.dailyRewardsUsd,
           source: market.reward.isRewardMarket ? "reward" : "spread",
@@ -212,7 +276,10 @@ export function generateQuotes(
       }
     }
 
-    const spreadBid = spreadLaneEnabled && spreadEntryMidpointAllowed ? insideSpreadBid(outcomeBook, config) : undefined;
+    const spreadBid =
+      spreadLaneEnabled && spreadEntryMidpointAllowed
+        ? insideSpreadBid(outcomeBook, config)
+        : undefined;
     if (spreadBid !== undefined) {
       const spreadNotionalUsd = laneNotionalUsd(
         config.spreadTargetOrderSizeUsd,
@@ -220,7 +287,8 @@ export function generateQuotes(
         config.spreadMaxOrderSizeUsd,
         true,
       );
-      const sized = spreadNotionalUsd === undefined ? undefined : quoteSize(spreadBid, spreadNotionalUsd);
+      const sized =
+        spreadNotionalUsd === undefined ? undefined : quoteSize(spreadBid, spreadNotionalUsd);
       if (sized) {
         quotes.push({
           id: `${market.marketAppId}:${outcome}:spread-bid:${Date.now()}`,
@@ -234,7 +302,8 @@ export function generateQuotes(
           ...sized,
           reason: `spread-capture bid inside ${((outcomeBook.spread ?? 0) * 100).toFixed(2)}c spread`,
           rewardEligible: false,
-          rewardZoneDistanceCents: rewardSpread !== undefined ? Math.abs(midpoint - spreadBid) * 100 : undefined,
+          rewardZoneDistanceCents:
+            rewardSpread !== undefined ? Math.abs(midpoint - spreadBid) * 100 : undefined,
           rewardMinContracts,
           estimatedRewardUsdPerDay: market.reward.dailyRewardsUsd,
           source: "spread",
@@ -266,7 +335,9 @@ export function generateQuotes(
         // ask can sit close enough to the market to actually clear, instead of
         // being pinned just below cost where it never fills.
         const isStale = (positionAgeSeconds ?? 0) >= config.staleInventoryAgeHours * 3600;
-        const lossCapCents = isStale ? config.staleInventoryMaxLossCents : config.underwaterExitMaxLossCents;
+        const lossCapCents = isStale
+          ? config.staleInventoryMaxLossCents
+          : config.underwaterExitMaxLossCents;
         const maxLossAsk = Math.max(0.000001, averageCost - lossCapCents / 100);
         ask = Math.max(ask, maxLossAsk);
         controlledUnderwaterExit = ask < minimumProfitableAsk;
@@ -289,11 +360,18 @@ export function generateQuotes(
         const underwaterCap = Math.max(config.underwaterExitMaxNotionalUsd, inventoryNotionalCap);
         exitNotionalUsd = Math.min(exitNotionalUsd ?? underwaterCap, underwaterCap);
       }
-      const sized = exitNotionalUsd === undefined || exitNotionalUsd <= 0 ? undefined : quoteSize(ask, exitNotionalUsd);
+      const sized =
+        exitNotionalUsd === undefined || exitNotionalUsd <= 0
+          ? undefined
+          : quoteSize(ask, exitNotionalUsd);
       if (sized) {
         const sizeShares = Math.min(sized.sizeShares, roundShares(inventory));
         if (sizeShares > 0) {
-          if (controlledUnderwaterExit && averageCost !== undefined && !config.inventoryExitFullPosition) {
+          if (
+            controlledUnderwaterExit &&
+            averageCost !== undefined &&
+            !config.inventoryExitFullPosition
+          ) {
             const marketLossUsed = existingControlledMarketLossUsd(state, market.marketAppId);
             const quoteLoss = expectedLossUsd(averageCost, ask, sizeShares);
             if (marketLossUsed + quoteLoss > config.underwaterExitMaxMarketLossUsd) continue;
@@ -320,7 +398,8 @@ export function generateQuotes(
                   ).toFixed(2)}c`
                 : "inventory exit ask",
             rewardEligible,
-            rewardZoneDistanceCents: rewardSpread !== undefined ? Math.abs(midpoint - ask) * 100 : undefined,
+            rewardZoneDistanceCents:
+              rewardSpread !== undefined ? Math.abs(midpoint - ask) * 100 : undefined,
             rewardMinContracts,
             estimatedRewardUsdPerDay: market.reward.dailyRewardsUsd,
             source: "inventory_exit",

@@ -1,12 +1,21 @@
 import type { OpenOrder, WalletPosition } from "@alpha-arcade/sdk";
-
-import { readAlphaConfig } from "./alphaConfig.js";
-import { loadAlphaScan } from "./alphaMarketScanner.js";
 import { AlphaSdkClient, fromMicroUnits } from "./alphaClient.js";
-import { buildCapitalLedger, mergeCapitalLedgerIntoState, type CapitalLedger } from "./capitalLedger.js";
+import { readAlphaConfig } from "./alphaConfig.js";
 import { summarizeLiveExposure } from "./alphaFormatter.js";
+import { loadAlphaScan } from "./alphaMarketScanner.js";
 import { loadAlphaState, saveAlphaState } from "./alphaStateStore.js";
-import type { AlphaBotState, AlphaMarket, AlphaOrderbook, AlphaPaperOrder, AlphaPaperPosition } from "./alphaTypes.js";
+import type {
+  AlphaBotState,
+  AlphaMarket,
+  AlphaOrderbook,
+  AlphaPaperOrder,
+  AlphaPaperPosition,
+} from "./alphaTypes.js";
+import {
+  buildCapitalLedger,
+  type CapitalLedger,
+  mergeCapitalLedgerIntoState,
+} from "./capitalLedger.js";
 
 export type DashboardPositionRow = {
   marketId: string;
@@ -159,7 +168,8 @@ function toPositionRowsFromState(state: AlphaBotState): DashboardPositionRow[] {
         avgCost: position.avgYesCost,
         lockedUsd: position.avgYesCost * position.yesShares,
         mark,
-        unrealisedPnl: mark !== undefined ? (mark - position.avgYesCost) * position.yesShares : undefined,
+        unrealisedPnl:
+          mark !== undefined ? (mark - position.avgYesCost) * position.yesShares : undefined,
         valueUsd: mark !== undefined ? mark * position.yesShares : undefined,
       });
     }
@@ -175,7 +185,8 @@ function toPositionRowsFromState(state: AlphaBotState): DashboardPositionRow[] {
         avgCost: position.avgNoCost,
         lockedUsd: position.avgNoCost * position.noShares,
         mark,
-        unrealisedPnl: mark !== undefined ? (mark - position.avgNoCost) * position.noShares : undefined,
+        unrealisedPnl:
+          mark !== undefined ? (mark - position.avgNoCost) * position.noShares : undefined,
         valueUsd: mark !== undefined ? mark * position.noShares : undefined,
       });
     }
@@ -210,7 +221,8 @@ function toPositionRowsFromWallet(
         avgCost,
         lockedUsd: avgCost !== undefined ? avgCost * yesShares : undefined,
         mark,
-        unrealisedPnl: avgCost !== undefined && mark !== undefined ? (mark - avgCost) * yesShares : undefined,
+        unrealisedPnl:
+          avgCost !== undefined && mark !== undefined ? (mark - avgCost) * yesShares : undefined,
         valueUsd: mark !== undefined ? mark * yesShares : undefined,
       });
     }
@@ -227,12 +239,15 @@ function toPositionRowsFromWallet(
         avgCost,
         lockedUsd: avgCost !== undefined ? avgCost * noShares : undefined,
         mark,
-        unrealisedPnl: avgCost !== undefined && mark !== undefined ? (mark - avgCost) * noShares : undefined,
+        unrealisedPnl:
+          avgCost !== undefined && mark !== undefined ? (mark - avgCost) * noShares : undefined,
         valueUsd: mark !== undefined ? mark * noShares : undefined,
       });
     }
   }
-  return rows.sort((a, b) => (b.lockedUsd ?? b.valueUsd ?? b.shares) - (a.lockedUsd ?? a.valueUsd ?? a.shares));
+  return rows.sort(
+    (a, b) => (b.lockedUsd ?? b.valueUsd ?? b.shares) - (a.lockedUsd ?? a.valueUsd ?? a.shares),
+  );
 }
 
 function toOpenOrderRow(order: AlphaPaperOrder): DashboardOpenOrderRow {
@@ -330,7 +345,9 @@ function cacheKey(walletAddress: string | undefined): string {
   return walletAddress?.trim().toUpperCase() || "__DEFAULT__";
 }
 
-export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string): Promise<AlphaDashboardSnapshot> {
+export async function buildAlphaDashboardSnapshot(
+  walletAddressOverride?: string,
+): Promise<AlphaDashboardSnapshot> {
   const config = readAlphaConfig();
   const walletAddress = walletAddressOverride?.trim() || config.walletAddress;
   const ttlMs = readCacheTtlMs();
@@ -352,7 +369,11 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
 
   try {
     const scan = await loadAlphaScan(config);
-    const markets = [...new Map([...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market])).values()];
+    const markets = [
+      ...new Map(
+        [...scan.rewardMarkets, ...scan.markets].map((market) => [market.marketAppId, market]),
+      ).values(),
+    ];
     marketsByAppId = new Map(markets.map((market) => [market.marketAppId, market]));
     slugByMarketAppId = new Map(
       markets
@@ -363,12 +384,16 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
       rewardOrderbooks.set(marketAppId, book);
     }
   } catch (error) {
-    errors.push(`Amarok market metadata unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    errors.push(
+      `Amarok market metadata unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const rewardMarketAppIds = new Set(
     state.openOrders
-      .filter((order) => order.status === "open" && order.runMode === "live" && order.rewardEligible)
+      .filter(
+        (order) => order.status === "open" && order.runMode === "live" && order.rewardEligible,
+      )
       .map((order) => order.marketAppId),
   );
   for (const marketAppId of rewardMarketAppIds) {
@@ -454,10 +479,15 @@ export async function buildAlphaDashboardSnapshot(walletAddressOverride?: string
     });
     realPnl = toDashboardRealPnl(ledger);
     if (ledger.flowsRefreshed) {
-      await saveAlphaState(config.stateKey, mergeCapitalLedgerIntoState(state, ledger.flows, ledger.scanMeta));
+      await saveAlphaState(
+        config.stateKey,
+        mergeCapitalLedgerIntoState(state, ledger.flows, ledger.scanMeta),
+      );
     }
   } catch (error) {
-    errors.push(`Accountancy ledger unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    errors.push(
+      `Accountancy ledger unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const snapshot: AlphaDashboardSnapshot = {

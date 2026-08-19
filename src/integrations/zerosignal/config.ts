@@ -21,10 +21,7 @@ export type ZeroSignalConfig = {
   aiMaxToolCalls: number;
 };
 
-function readOptionalString(
-  environment: NodeJS.ProcessEnv,
-  key: string,
-): string | undefined {
+function readOptionalString(environment: NodeJS.ProcessEnv, key: string): string | undefined {
   const raw = environment[key];
   if (raw === undefined || raw.trim() === "") return undefined;
   return raw.trim();
@@ -46,10 +43,7 @@ function readReasoningEffort(
   return fallback;
 }
 
-function readAiMode(
-  environment: NodeJS.ProcessEnv,
-  fallback: ZeroSignalAiMode,
-): ZeroSignalAiMode {
+function readAiMode(environment: NodeJS.ProcessEnv, fallback: ZeroSignalAiMode): ZeroSignalAiMode {
   const raw = environment.AI_MODE?.toLowerCase();
   if (raw === "full" || raw === "lite") return raw;
   return fallback;
