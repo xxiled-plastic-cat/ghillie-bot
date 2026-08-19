@@ -40,6 +40,8 @@ export type AlphaMarket = {
   liquidity?: number;
   reward: AlphaRewardInfo;
   raw: unknown;
+  /** Amarok `get_quotes` suggestions for this market, when the scan included them. */
+  suggestedQuotes?: AlphaQuote[];
 };
 
 export type AlphaBookLevel = {

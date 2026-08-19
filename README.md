@@ -200,7 +200,7 @@ App Platform sets `PORT` for readiness probes (cron health on `/health` / `/heal
 ```
 live / scan tick
   → Amarok MCP (amarok_get_scan / opportunities / quotes) with x402 paymentSignature
-  → local quoteEngine + risk / inventory
+  → quoteEngine prefers Amarok suggested quotes (local book fallback per missing leg) + risk / inventory
   → place: amarok_get_execution_quote → sign unsignedTxnsBase64 → algod sendRawTransaction
   → cancel / claim / merge / split / wallet orders: @alpha-arcade/sdk (venue ops Amarok does not expose yet)
 ```

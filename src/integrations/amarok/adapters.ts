@@ -255,6 +255,16 @@ function withDefaultKind(row: unknown, defaultKind: string): unknown {
   return { ...record, kind: defaultKind };
 }
 
+function attachSuggestedQuotes(markets: AlphaMarket[], suggestedQuotes: AlphaQuote[]): void {
+  if (suggestedQuotes.length === 0) return;
+  for (const market of markets) {
+    const related = suggestedQuotes.filter((quote) => quote.marketAppId === market.marketAppId);
+    if (related.length === 0) continue;
+    market.suggestedQuotes = related;
+    market.raw = { ...(asRecord(market.raw) ?? {}), amarokQuotes: related };
+  }
+}
+
 /**
  * Adapt Amarok scan / opportunities / lane / quotes payloads into the Alpha scan DTO
  * used by liveTrader and paperTrader.
@@ -364,15 +374,12 @@ export function scanFromAmarok(params: {
     }
   }
 
-  // Attach Amarok suggested quotes onto market.raw for optional downstream use.
+  // Attach Amarok suggested quotes onto every market object. liveTrader/paperTrader
+  // maps may prefer rewardMarkets over scan markets (or the reverse), so both lists
+  // must carry the same suggestions for quoteEngine to consume them.
   const suggestedQuotes = quotesFromAmarok(params.quotesPayload);
-  if (suggestedQuotes.length > 0) {
-    for (const market of markets) {
-      const related = suggestedQuotes.filter((quote) => quote.marketAppId === market.marketAppId);
-      if (related.length === 0) continue;
-      market.raw = { ...(asRecord(market.raw) ?? {}), amarokQuotes: related };
-    }
-  }
+  attachSuggestedQuotes(markets, suggestedQuotes);
+  attachSuggestedQuotes(rewardMarkets, suggestedQuotes);
 
   return {
     markets,

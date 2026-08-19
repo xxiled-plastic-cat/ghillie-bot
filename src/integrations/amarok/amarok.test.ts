@@ -248,3 +248,48 @@ test("scanFromAmarok fills rewardMarkets from rewardsPayload without opportuniti
   assert.equal(scan.rewardMarkets[0]?.marketAppId, 3100000002);
   assert.equal(scan.rewardMarkets[0]?.reward.dailyRewardsUsd, 8.5);
 });
+
+test("scanFromAmarok attaches suggested quotes to scan and reward markets", () => {
+  const scan = scanFromAmarok({
+    scanPayload: {
+      data: {
+        markets: [
+          {
+            marketAppId: 3100000003,
+            title: "Quoted",
+            status: "live",
+            resolved: false,
+            book: { bestBid: 0.4, bestAsk: 0.45, mid: 0.425 },
+            reward: { isRewardMarket: true, dailyRewardsUsd: 4 },
+          },
+        ],
+      },
+    },
+    rewardsPayload: {
+      data: [{ marketAppId: 3100000003, title: "Quoted", estimatedUsdPerDay: "4" }],
+    },
+    quotesPayload: {
+      data: [
+        {
+          marketAppId: 3100000003,
+          outcome: "YES",
+          side: "bid",
+          price: 0.41,
+          sizeShares: 7,
+          kind: "lp_reward",
+          reason: "Amarok suggested quote",
+        },
+      ],
+    },
+  });
+  const scanMarket = scan.markets.find((market) => market.marketAppId === 3100000003);
+  const rewardMarket = scan.rewardMarkets.find((market) => market.marketAppId === 3100000003);
+  assert.equal(scanMarket?.suggestedQuotes?.length, 1);
+  assert.equal(rewardMarket?.suggestedQuotes?.length, 1);
+  assert.equal(scanMarket?.suggestedQuotes?.[0]?.price, 0.41);
+  assert.equal(scanMarket?.suggestedQuotes?.[0]?.source, "reward");
+  assert.equal(
+    (scanMarket?.raw as { amarokQuotes?: unknown[] } | undefined)?.amarokQuotes?.length,
+    1,
+  );
+});
