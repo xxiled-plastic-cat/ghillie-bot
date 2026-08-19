@@ -3,6 +3,7 @@ import {
   parseExecutionQuotePayload,
   signAndSubmitUnsignedGroup,
 } from "../integrations/algorand/submitUnsigned.js";
+import type { PaymentReceipt } from "../integrations/amarok/payment.js";
 import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 import { AlphaSdkClient, fromMicroUnits, roundShares } from "./alphaClient.js";
@@ -80,6 +81,8 @@ export type LiveTickResult = {
   state: AlphaBotState;
   walletUsdcBalanceUsd?: number;
   walletAlgoBalance?: number;
+  /** x402 receipts from Amarok execution-quote calls this tick (live place only). */
+  payments?: PaymentReceipt[];
 };
 
 function toTrackedLiveOrder(
@@ -1130,6 +1133,7 @@ async function finalLiveTickResult(
     walletUsdcBalanceUsd?: number;
     walletAlgoBalance?: number;
     refreshBalances?: boolean;
+    payments?: PaymentReceipt[];
   } = {},
 ): Promise<LiveTickResult> {
   let walletUsdcBalanceUsd = options.walletUsdcBalanceUsd;
@@ -1152,7 +1156,13 @@ async function finalLiveTickResult(
     }
     actions.push({ kind: "skip", message: "Refreshed wallet USDC/ALGO balances for live summary" });
   }
-  return { actions, state, walletUsdcBalanceUsd, walletAlgoBalance };
+  return {
+    actions,
+    state,
+    walletUsdcBalanceUsd,
+    walletAlgoBalance,
+    payments: options.payments && options.payments.length > 0 ? options.payments : undefined,
+  };
 }
 
 type LaneQueues = {
@@ -1838,6 +1848,7 @@ export async function runLiveTick(
 
   let remainingLiveBidUsdc = walletUsdcBalanceUsd;
   let reportedBidBudgetDepleted = false;
+  const executionPayments: PaymentReceipt[] = [];
   const amarokRuntime = mode === "live" ? createAmarokRuntime(config) : undefined;
   try {
     for (const quote of placementQueue) {
@@ -1966,6 +1977,7 @@ export async function runLiveTick(
             },
           },
         ]);
+        if (quoteResult.payment) executionPayments.push(quoteResult.payment);
         const parsed = parseExecutionQuotePayload(quoteResult.data);
         const result = await signAndSubmitUnsignedGroup({
           wallet: amarokRuntime.wallet,
@@ -2036,5 +2048,6 @@ export async function runLiveTick(
   return finalLiveTickResult(liveClient, config, actions, state, {
     walletUsdcBalanceUsd,
     walletAlgoBalance,
+    payments: executionPayments,
   });
 }

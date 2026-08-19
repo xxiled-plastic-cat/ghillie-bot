@@ -2,6 +2,7 @@ import algosdk from "algosdk";
 import dotenv from "dotenv";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
 import { AlphaSdkClient } from "./alphaClient.js";
+import type { AlphaConfig } from "./alphaConfig.js";
 import {
   printLiveSummary,
   printMarketDetail,
@@ -11,7 +12,7 @@ import {
   printScan,
   summarizeLiveExposure,
 } from "./alphaFormatter.js";
-import { loadAlphaScan, loadAmarokMarket } from "./alphaMarketScanner.js";
+import { type AlphaScanResult, loadAlphaScan, loadAmarokMarket } from "./alphaMarketScanner.js";
 import { scanParity } from "./alphaParityScanner.js";
 import { runResolvedAssetCleanup } from "./alphaResolvedAssetCleanup.js";
 import { rankRewardCandidates } from "./alphaRewardScanner.js";
@@ -38,6 +39,14 @@ import {
   formatTickDigestReport,
   rewardContextFromScan,
 } from "./telegramReports.js";
+import {
+  applyX402PaymentsToState,
+  formatAmarokX402ThisRunLine,
+  formatDailySpendLines,
+  persistX402SpendCounters,
+  sumPaymentBaseUnits,
+  toX402SpendReport,
+} from "./x402Spend.js";
 
 dotenv.config();
 
@@ -347,6 +356,14 @@ function formatError(error: unknown): string {
   return lines.join("\n");
 }
 
+async function recordScanX402Spend(
+  config: AlphaConfig,
+  payments: AlphaScanResult["payments"],
+): Promise<void> {
+  if (!payments?.length) return;
+  await persistX402SpendCounters(config, payments);
+}
+
 async function buildScan(liveSigner = false) {
   const startedAt = Date.now();
   logStartupDebug(`buildScan start liveSigner=${liveSigner}`);
@@ -375,11 +392,13 @@ async function buildScan(liveSigner = false) {
 
 async function runScanCommand(): Promise<void> {
   const { config, scan, rewardCandidates, parity } = await buildScan(false);
+  await recordScanX402Spend(config, scan.payments);
   printScan(scan, rewardCandidates, parity, config);
 }
 
 async function runRewardsCommand(): Promise<void> {
-  const { scan, rewardCandidates } = await buildScan(false);
+  const { config, scan, rewardCandidates } = await buildScan(false);
+  await recordScanX402Spend(config, scan.payments);
   printRewards(scan.rewardMarkets, rewardCandidates, scan.rewardError);
 }
 
@@ -392,6 +411,7 @@ async function runMarketCommand(arg: string | undefined): Promise<void> {
 
 async function runPaperCommand(): Promise<void> {
   const { config, scan } = await buildScan(false);
+  await recordScanX402Spend(config, scan.payments);
   const state = await runPaperTick(scan, config);
   printPaperWatch(state);
 }
@@ -401,6 +421,7 @@ async function runPaperWatchCommand(): Promise<void> {
   const loop = async () => {
     try {
       const { config, scan } = await buildScan(false);
+      await recordScanX402Spend(config, scan.payments);
       const state = await runPaperTick(scan, config);
       printPaperWatch(state);
     } catch (error) {
@@ -467,6 +488,14 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
       { throttleMinutes },
     );
   }
+  const allPayments = [...(scan.payments ?? []), ...(result.payments ?? [])];
+  if (mode === "live") {
+    applyX402PaymentsToState(result.state, allPayments);
+  } else {
+    await recordScanX402Spend(config, allPayments.length > 0 ? allPayments : undefined);
+    applyX402PaymentsToState(result.state, allPayments);
+  }
+  const spendReport = toX402SpendReport(result.state.x402Spend, config.maxDailyX402BaseUnits);
   const reportBase = {
     state: result.state,
     walletUsdcBalanceUsd: result.walletUsdcBalanceUsd,
@@ -474,7 +503,8 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
     config,
     rewardContext: rewardContextFromScan(scan, config.walletAddress),
     spend: {
-      payments: scan.payments,
+      payments: allPayments,
+      daily: spendReport.amarok,
     },
   };
   if (mode === "live") {
@@ -483,15 +513,15 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
       actions: result.actions,
     });
     await notifyTelegramReport(digest);
-  }
-  if (mode === "live" && shouldSendDailySummary(result.state)) {
-    const dailySummary = formatDailySummaryReport(reportBase);
-    const sent = await notifyTelegramReport(dailySummary);
-    if (sent) {
-      result.state.notificationState ??= {};
-      result.state.notificationState.lastDailySummaryDate = new Date().toISOString().slice(0, 10);
-      await saveAlphaState(config.stateKey, result.state);
+    if (shouldSendDailySummary(result.state)) {
+      const dailySummary = formatDailySummaryReport(reportBase);
+      const sent = await notifyTelegramReport(dailySummary);
+      if (sent) {
+        result.state.notificationState ??= {};
+        result.state.notificationState.lastDailySummaryDate = new Date().toISOString().slice(0, 10);
+      }
     }
+    await saveAlphaState(config.stateKey, result.state);
   }
   console.log(mode === "live" ? "GHILLIE ALPHA LIVE" : "GHILLIE ALPHA LIVE DRY RUN");
   console.log("");
@@ -506,6 +536,14 @@ async function runLiveCommand(mode: "live-dry-run" | "live"): Promise<void> {
     config,
     rewardContextFromScan(scan, config.walletAddress),
   );
+  for (const line of formatDailySpendLines(spendReport)) {
+    console.log(`  ${line}`);
+  }
+  if (allPayments.length > 0) {
+    console.log(
+      `  ${formatAmarokX402ThisRunLine(allPayments.length, sumPaymentBaseUnits(allPayments))}`,
+    );
+  }
   if (mode === "live") {
     try {
       const { buildAlphaDashboardSnapshot } = await import("./alphaDashboardData.js");

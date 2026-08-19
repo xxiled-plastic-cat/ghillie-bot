@@ -282,6 +282,22 @@ describe("createLaneCommandHandlers", () => {
         lastTickEndedAt: "2026-08-07T12:01:00.000Z",
         lastTickExitCode: 0,
       }),
+      getX402Spend: async () => ({
+        dayUtc: "2026-08-07",
+        timezone: "UTC" as const,
+        amarok: {
+          usedUsdc: "0.12",
+          capUsdc: "5",
+          remainingUsdc: "4.88",
+          uncapped: false,
+          callCount: 2,
+        },
+        lastRun: {
+          callCount: 2,
+          usedUsdc: "0.12",
+          usedBaseUnits: "120000",
+        },
+      }),
     });
 
     assert.equal(await handlers.help!(commandCtx()), HELP_TEXT);
@@ -291,6 +307,9 @@ describe("createLaneCommandHandlers", () => {
     );
     assert.match(status, /cron_busy: no/);
     assert.match(status, /reward:/);
+    assert.match(status, /Amarok x402 today \(UTC\): \$0\.12 used, \$4\.88 remaining/);
+    assert.match(status, /Amarok x402 last run: 2 call\(s\), \$0\.12 USDC/);
+    assert.doesNotMatch(status, /paymentSignature/);
 
     await assert.rejects(
       () =>

@@ -14,6 +14,7 @@ import {
 } from "./laneOverrideStore.js";
 import type { TelegramBotClient, TelegramUpdate } from "./telegramBotClient.js";
 import { telegramEnabled } from "./telegramNotifier.js";
+import { formatDailySpendLines, loadX402SpendReport, type X402SpendReport } from "./x402Spend.js";
 
 export interface ParsedTelegramCommand {
   name: string;
@@ -39,7 +40,7 @@ export interface TelegramCommandLogger {
 export const HELP_TEXT = [
   "Ghillie operator commands:",
   "/help — list commands",
-  "/status — cron health + lane status",
+  "/status — cron health, lanes, Amarok x402 spend",
   "/lanes — compact lane on/off status",
   "/lane <reward|spread|parity> <on|off|default> — toggle a lane (next tick)",
 ].join("\n");
@@ -100,6 +101,7 @@ export type CronHealthSnapshot = {
 export interface LaneCommandDeps {
   getCronHealth: () => CronHealthSnapshot;
   getOverrides?: () => Promise<LaneOverrides>;
+  getX402Spend?: () => Promise<X402SpendReport>;
 }
 
 function onOff(value: boolean): string {
@@ -116,6 +118,7 @@ export function formatStatusReply(
   health: CronHealthSnapshot,
   overrides: LaneOverrides,
   base = readAlphaConfig(),
+  spend?: X402SpendReport,
 ): string {
   const lines = [
     "Ghillie alpha status",
@@ -131,6 +134,9 @@ export function formatStatusReply(
   if (overrides.updatedAt) {
     lines.push(`overrides_updated: ${overrides.updatedAt} (${overrides.source ?? "unknown"})`);
   }
+  if (spend) {
+    lines.push("", ...formatDailySpendLines(spend));
+  }
   return lines.join("\n");
 }
 
@@ -143,7 +149,9 @@ export function createLaneCommandHandlers(
 
   const status: TelegramCommandHandler = async () => {
     const overrides = await loadOverrides();
-    return formatStatusReply(deps.getCronHealth(), overrides);
+    const base = readAlphaConfig();
+    const spend = await (deps.getX402Spend ?? (() => loadX402SpendReport(base)))();
+    return formatStatusReply(deps.getCronHealth(), overrides, base, spend);
   };
 
   const lanes: TelegramCommandHandler = async () => {
