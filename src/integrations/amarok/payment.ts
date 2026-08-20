@@ -61,6 +61,8 @@ const ENDPOINT_CEILINGS: Array<{ match: (path: string) => boolean; ceiling: bigi
   { match: (path) => path === "/v1/alpha/quotes", ceiling: 60_000n },
   { match: (path) => path === "/v1/alpha/scan", ceiling: 250_000n },
   { match: (path) => path === "/v1/alpha/execution/quotes", ceiling: 100_000n },
+  { match: (path) => path === "/v1/alpha/bundle", ceiling: 200_000n },
+  { match: (path) => path === "/v1/alpha/session", ceiling: 300_000n },
 ];
 
 export interface PaymentPolicy {

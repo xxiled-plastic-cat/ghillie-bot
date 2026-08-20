@@ -62,7 +62,7 @@ Public portfolio (positions / orders / balances) is served by Amarok free route 
 
 ## ZeroSignal (zs-proxy)
 
-LLM calls go **only** through [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback. Cloud/Docker bundles **zs-proxy 0.15.1** as an in-container sidecar; local Node needs a host install.
+LLM calls go **only** through [zs-proxy](https://txnlab.gitbook.io/zerosignal/using-the-proxy/quick-start.md) (OpenAI-compatible). No OpenAI/Anthropic fallback. Cloud/Docker bundles **zs-proxy 0.16.1** as an in-container sidecar; local Node needs a host install.
 
 ### Docker (recommended for cloud)
 
@@ -131,11 +131,13 @@ npm run zs:smoke
 ## Amarok MCP smoke
 
 ```bash
-npm run amarok:discovery          # free health / discovery / shapes
+npm run amarok:discovery          # free health / discovery / shapes (+ billing when 1.4.0+)
 npm run amarok:opportunities      # paid mixed list (spends USDC)
 npm run amarok:rewards            # paid ranked LP rewards (spends USDC)
 npm run amarok:spreads            # paid ranked maker/spreads (spends USDC)
 npm run amarok:parity             # paid ranked YES+NO parity (spends USDC)
+npm run amarok:bundle             # paid research bundle SKU (spends USDC)
+npm run amarok:session            # paid research session mint (spends USDC)
 npm run amarok:execution-dry -- --market <marketAppId>
 npm run amarok:execution-dry -- --market <marketAppId> --submit
 ```
@@ -204,6 +206,8 @@ live / scan tick
   → place: amarok_get_execution_quote → sign unsignedTxnsBase64 → algod sendRawTransaction
   → cancel / claim / merge / split / wallet orders: @alpha-arcade/sdk (venue ops Amarok does not expose yet)
 ```
+
+Amarok **1.4.0** is additive: per-request 402 remains the default. Optional `AMAROK_RESEARCH_SKU=bundle|session` can collapse covered research GETs (bundle for legacy quotes+opportunities; session for lane multi-GET ticks). Scan, execution, portfolio, and advisor stay per-request — do not expect `sessionToken` to unlock them. Partial scans may return `timedOut` / `orderbookErrors`; live placement skips that tick rather than trading on synthetic books.
 
 Integration code lives under `src/integrations/amarok/` (MCP client + x402 payment builder), `src/integrations/zerosignal/` (zs-proxy OpenAI client + tool loop), and `src/integrations/algorand/submitUnsigned.ts`.
 
