@@ -106,9 +106,10 @@ test("prepareAgentTools strips payment and wallet fields from schemas", () => {
         properties: {
           limit: { type: "number" },
           paymentSignature: { type: "string" },
+          sessionToken: { type: "string" },
           agentAddress: { type: "string" },
         },
-        required: ["limit", "paymentSignature", "agentAddress"],
+        required: ["limit", "paymentSignature", "sessionToken", "agentAddress"],
       },
     },
   ]);
@@ -117,6 +118,7 @@ test("prepareAgentTools strips payment and wallet fields from schemas", () => {
     required: string[];
   };
   assert.equal(schema.properties.paymentSignature, undefined);
+  assert.equal(schema.properties.sessionToken, undefined);
   assert.equal(schema.properties.agentAddress, undefined);
   assert.deepEqual(schema.required, ["limit"]);
 });

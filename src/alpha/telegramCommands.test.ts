@@ -26,6 +26,7 @@ function baseConfig(overrides: Partial<AlphaConfig> = {}): AlphaConfig {
   return {
     amarokMcpUrl: "https://example.test/mcp",
     maxDailyX402BaseUnits: 0n,
+    amarokResearchSku: "off",
     algodServer: "https://algod.test",
     indexerServer: "https://idx.test",
     matcherAppId: 1,

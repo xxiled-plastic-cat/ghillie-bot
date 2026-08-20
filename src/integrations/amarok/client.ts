@@ -90,6 +90,25 @@ const TOOL_RESOURCE_PATHS: Record<string, string | ((args: Record<string, unknow
   amarok_get_quotes: "/v1/alpha/quotes",
   amarok_get_scan: "/v1/alpha/scan",
   amarok_get_execution_quote: "/v1/alpha/execution/quotes",
+  amarok_get_research_bundle: "/v1/alpha/bundle",
+  amarok_create_research_session: "/v1/alpha/session",
+};
+
+/** Tools that accept host-owned `sessionToken` (Amarok research-get session class). */
+const SESSION_COVERED_TOOLS = new Set([
+  "amarok_list_opportunities",
+  "amarok_list_rewards",
+  "amarok_list_spreads",
+  "amarok_list_parity",
+  "amarok_get_market",
+  "amarok_get_quotes",
+  "amarok_get_research_bundle",
+]);
+
+export type ResearchSession = {
+  token: string;
+  expiresAt: string;
+  ttlSeconds?: number;
 };
 
 export type LimitOrderQuoteInput = {
@@ -101,10 +120,34 @@ export type LimitOrderQuoteInput = {
 };
 
 export class AmarokClient {
+  private researchSession: ResearchSession | undefined;
+
   constructor(
     private readonly caller: ToolCaller,
     private readonly paymentBuilder: PaymentBuilder | undefined,
   ) {}
+
+  setResearchSession(session: ResearchSession | undefined): void {
+    this.researchSession = session;
+  }
+
+  clearResearchSession(): void {
+    this.researchSession = undefined;
+  }
+
+  getResearchSession(): ResearchSession | undefined {
+    return this.researchSession;
+  }
+
+  private liveSessionToken(): string | undefined {
+    if (!this.researchSession?.token) return undefined;
+    const expiresMs = Date.parse(this.researchSession.expiresAt);
+    if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) {
+      this.clearResearchSession();
+      return undefined;
+    }
+    return this.researchSession.token;
+  }
 
   async listTools(): Promise<McpToolDefinition[]> {
     if (!this.caller.listTools) return [];
@@ -117,6 +160,14 @@ export class AmarokClient {
     walletAddress: string,
   ): Promise<ManagedToolResult> {
     const args = injectManagedWallet(name, rawArgs, walletAddress);
+    const sessionToken =
+      SESSION_COVERED_TOOLS.has(name) && typeof args.sessionToken !== "string"
+        ? this.liveSessionToken()
+        : undefined;
+    if (sessionToken) {
+      args.sessionToken = sessionToken;
+    }
+
     const preflight = parseToolPayload(await this.caller.callTool(name, args), name);
     const parsedPreflight = preflightSchema.safeParse(preflight);
     if (!parsedPreflight.success) {
@@ -125,6 +176,13 @@ export class AmarokClient {
       }
       return { data: preflight };
     }
+
+    // Invalid/expired session falls through to per-request 402 — clear and pay.
+    if (args.sessionToken) {
+      delete args.sessionToken;
+      this.clearResearchSession();
+    }
+
     if (!this.paymentBuilder) {
       throw new Error("Amarok payment is required but no local payment signer is configured");
     }
@@ -216,6 +274,25 @@ export class AmarokClient {
     args: Record<string, unknown> = {},
   ): Promise<ManagedToolResult> {
     return this.callManagedTool("amarok_get_scan", args, walletAddress);
+  }
+
+  async getResearchBundle(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
+    return this.callManagedTool("amarok_get_research_bundle", args, walletAddress);
+  }
+
+  async createResearchSession(
+    walletAddress: string,
+    args: Record<string, unknown> = {},
+  ): Promise<ManagedToolResult> {
+    const result = await this.callManagedTool("amarok_create_research_session", args, walletAddress);
+    const session = extractResearchSession(result.data);
+    if (session) {
+      this.setResearchSession(session);
+    }
+    return result;
   }
 
   async getExecutionQuote(
@@ -347,7 +424,25 @@ function injectManagedWallet(
     });
   }
   delete args.paymentSignature;
+  delete args.sessionToken;
   return args;
+}
+
+function extractResearchSession(payload: unknown): ResearchSession | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const root = payload as Record<string, unknown>;
+  const session =
+    root.session && typeof root.session === "object"
+      ? (root.session as Record<string, unknown>)
+      : root;
+  const token = typeof session.token === "string" ? session.token : undefined;
+  const expiresAt = typeof session.expiresAt === "string" ? session.expiresAt : undefined;
+  if (!token || !expiresAt) return undefined;
+  const ttlSeconds =
+    typeof session.ttlSeconds === "number" && Number.isFinite(session.ttlSeconds)
+      ? session.ttlSeconds
+      : undefined;
+  return { token, expiresAt, ttlSeconds };
 }
 
 function assertManagedPaymentResource(

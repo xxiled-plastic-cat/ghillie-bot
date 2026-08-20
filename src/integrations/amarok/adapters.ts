@@ -255,6 +255,42 @@ function withDefaultKind(row: unknown, defaultKind: string): unknown {
   return { ...record, kind: defaultKind };
 }
 
+export type AmarokScanCompleteness = {
+  timedOut: boolean;
+  capped: boolean;
+  candidateCount?: number;
+  orderbookErrors: number;
+};
+
+/** True when Amarok returned a partial scan that must not drive live placement. */
+export function isIncompleteAmarokScan(completeness: AmarokScanCompleteness | undefined): boolean {
+  if (!completeness) return false;
+  return completeness.timedOut || completeness.orderbookErrors > 0;
+}
+
+export function formatIncompleteScanSkipMessage(completeness: AmarokScanCompleteness): string {
+  const parts = [
+    completeness.timedOut ? "timedOut=true" : null,
+    completeness.orderbookErrors > 0
+      ? `orderbookErrors=${completeness.orderbookErrors}`
+      : null,
+    completeness.capped ? "capped=true" : null,
+    completeness.candidateCount !== undefined
+      ? `candidateCount=${completeness.candidateCount}`
+      : null,
+  ].filter(Boolean);
+  return `No live placements; Amarok scan incomplete (${parts.join(", ")})`;
+}
+
+function scanCompletenessFromPayload(scanData: Record<string, unknown>): AmarokScanCompleteness {
+  return {
+    timedOut: asBool(scanData.timedOut) ?? false,
+    capped: asBool(scanData.capped) ?? false,
+    candidateCount: asNumber(scanData.candidateCount),
+    orderbookErrors: asNumber(scanData.orderbookErrors) ?? 0,
+  };
+}
+
 /**
  * Adapt Amarok scan / opportunities / lane / quotes payloads into the Alpha scan DTO
  * used by liveTrader and paperTrader.
@@ -266,8 +302,12 @@ export function scanFromAmarok(params: {
   spreadsPayload?: unknown;
   parityPayload?: unknown;
   quotesPayload?: unknown;
+  /** Optional market-detail rows from `amarok_get_research_bundle`. */
+  bundleMarketsPayload?: unknown;
 }): AlphaScanResult {
   const scanData = asRecord(unwrapData(params.scanPayload)) ?? asRecord(params.scanPayload) ?? {};
+  const scanCompleteness = scanCompletenessFromPayload(scanData);
+  const incomplete = isIncompleteAmarokScan(scanCompleteness);
   const marketRows =
     (Array.isArray(scanData.markets) ? scanData.markets : undefined) ??
     (Array.isArray(unwrapData(params.scanPayload))
@@ -284,6 +324,26 @@ export function scanFromAmarok(params: {
     const rowRecord = asRecord(row);
     const bookRaw = rowRecord?.book ?? rowRecord?.orderbook ?? rowRecord?.orderBook;
     if (bookRaw) {
+      orderbooks.set(market.marketAppId, orderbookFromAmarok(market, bookRaw));
+    }
+  }
+
+  // Bundle market details can enrich the universe without a separate getMarket call.
+  const bundleMarketsRaw = unwrapData(params.bundleMarketsPayload);
+  const bundleMarketRows = Array.isArray(bundleMarketsRaw)
+    ? bundleMarketsRaw
+    : Array.isArray(asRecord(bundleMarketsRaw)?.markets)
+      ? (asRecord(bundleMarketsRaw)!.markets as unknown[])
+      : [];
+  for (const row of bundleMarketRows) {
+    const market = marketFromAmarok(row);
+    if (!market || market.resolved || market.status !== "live") continue;
+    if (!markets.some((existing) => existing.marketAppId === market.marketAppId)) {
+      markets.push(market);
+    }
+    const rowRecord = asRecord(row);
+    const bookRaw = rowRecord?.book ?? rowRecord?.orderbook ?? rowRecord?.orderBook;
+    if (bookRaw && !orderbooks.has(market.marketAppId)) {
       orderbooks.set(market.marketAppId, orderbookFromAmarok(market, bookRaw));
     }
   }
@@ -342,18 +402,21 @@ export function scanFromAmarok(params: {
   }
 
   // Ensure every market has at least an empty/top book so quoteEngine can run.
-  for (const market of markets) {
-    if (!orderbooks.has(market.marketAppId)) {
-      orderbooks.set(
-        market.marketAppId,
-        orderbookFromAmarok(market, {
-          yesBid:
-            market.yesPrice !== undefined ? Math.max(0.01, market.yesPrice - 0.01) : undefined,
-          yesAsk:
-            market.yesPrice !== undefined ? Math.min(0.99, market.yesPrice + 0.01) : undefined,
-          mid: market.yesPrice,
-        }),
-      );
+  // Skip synthesis when the scan is incomplete — synthetic ±0.01 depth is a trading hazard.
+  if (!incomplete) {
+    for (const market of markets) {
+      if (!orderbooks.has(market.marketAppId)) {
+        orderbooks.set(
+          market.marketAppId,
+          orderbookFromAmarok(market, {
+            yesBid:
+              market.yesPrice !== undefined ? Math.max(0.01, market.yesPrice - 0.01) : undefined,
+            yesAsk:
+              market.yesPrice !== undefined ? Math.min(0.99, market.yesPrice + 0.01) : undefined,
+            mid: market.yesPrice,
+          }),
+        );
+      }
     }
   }
 
@@ -378,5 +441,6 @@ export function scanFromAmarok(params: {
     markets,
     rewardMarkets,
     orderbooks,
+    scanCompleteness,
   };
 }
