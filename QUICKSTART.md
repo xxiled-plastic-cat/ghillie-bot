@@ -99,7 +99,7 @@ npm run alpha:cron:live-dry-run -- --once
 
 Equivalent single tick without the cron wrapper: `npm run 'alpha:live-dry-run'`.
 
-You should see `GHILLIE ALPHA LIVE DRY RUN` and actions such as `Would place …` / `Would cancel …` (no submit). Research still paid Amarok x402; entry quotes still hit zs-proxy plan-review (fail-closed if the proxy is down). Trading bot-state is **not** written in dry-run. Amarok x402 spend counters **are** updated on bot-state so Telegram `/status` can show today's used + remaining.
+You should see `GHILLIE ALPHA LIVE DRY RUN` and actions such as `Would place …` / `Would cancel …` (no submit). Research still paid Amarok x402; entry quotes still hit zs-proxy plan-review (fail-closed if the proxy is down). Inventory-exit asks skip review and still `Would place` — see [§10](#10-inventory-exits-and-the-risk-governor). Trading bot-state is **not** written in dry-run. Amarok x402 spend counters **are** updated on bot-state so Telegram `/status` can show today's used + remaining.
 
 ## 7. Dry-run cron loop
 
@@ -131,8 +131,79 @@ Outbound tick digests are live-mode only. Dry-run still starts the command loop 
 1. Set `ALPHA_ENABLE_LIVE_TRADING=true` and `ALPHA_CONFIRM_RISK=true`.
 2. Set `ALPHA_CRON_COMMAND` to the live tick (or use `npm run alpha:cron:live`).
 3. Docker / App Platform: build the root `Dockerfile`, leave the run command empty (entrypoint is live cron), set the Docker file-keyring passphrase and Spaces credentials. Probe `/health` / `/healthz` on `PORT`.
+4. Read [§10](#10-inventory-exits-and-the-risk-governor) before flipping the live gates so inventory-exit asks and `ALPHA_MAX_INVENTORY_NOTIONAL_USD` behave as you expect.
 
 Public showcase: https://amarok.compx.io/user-agents
+
+## 10. Inventory exits and the risk governor
+
+Operators can skip grepping `src/alpha/` — this section is the behaviour map. Canonical code: quote generation in [`src/alpha/quoteEngine.ts`](./src/alpha/quoteEngine.ts), live exit / governor path in [`src/alpha/liveTrader.ts`](./src/alpha/liveTrader.ts), exposure caps in [`src/alpha/alphaRiskManager.ts`](./src/alpha/alphaRiskManager.ts), plan-review prompt in [`src/alpha/planReview/prompt.ts`](./src/alpha/planReview/prompt.ts). Env knobs are listed under `# Inventory unwind` in [`.env.example`](./.env.example); structured risk stays in env, not in operator-preferences markdown.
+
+### What each lane does
+
+| Lane | New risk | Inventory unwind |
+| --- | --- | --- |
+| **Reward** (`ALPHA_ENABLE_REWARD_LANE`) | Entry bids (Amarok suggested quotes, then local reward-zone fallback) | Enables local inventory-exit asks |
+| **Spread** (`ALPHA_ENABLE_SPREAD_LANE` + `ALPHA_ENABLE_SPREAD_CAPTURE`) | Entry bids | Same — exits fire if **either** reward or spread is on |
+| **Parity** (`ALPHA_ENABLE_PARITY_LANE`) | YES+NO arb (separate path, before the governor) | Does **not** generate inventory-exit asks |
+| **Merge / claim** | None | `ALPHA_ENABLE_INVENTORY_MERGE` / `ALPHA_ENABLE_RESOLVED_CLAIM` run earlier in the tick and still run when the governor is on |
+
+Telegram `/lane reward|spread off` is the same as the env flags. Turning **both** reward and spread off stops new inventory-exit quotes (parity-only ticks do not unwind via asks). Incomplete Amarok scans (`timedOut` / `orderbookErrors`) skip **all** placement that tick, including exits — merge/claim may already have run.
+
+### Inventory-exit asks (when they fire)
+
+The host builds `source: "inventory_exit"` **asks locally** from held YES/NO shares (free wallet ASA + sell escrow). Amarok suggested quotes are never used as exits.
+
+They fire when all of these hold:
+
+1. Bot state holds shares on that market/outcome.
+2. The market is in this scan with a usable same-outcome midpoint (`ALPHA_MIN_SPREAD_EXIT_MIDPOINT` … `ALPHA_MAX_SPREAD_MIDPOINT`).
+3. Reward **or** spread lane is on.
+4. An ask can be priced: inside-spread (or a synthetic ask above best bid if the ask side is missing). Reward-zone markets may sit near mid + buffer instead.
+
+**Profitable vs underwater vs stale** (price vs tracked avg cost + `ALPHA_SPREAD_EXIT_EDGE_CENTS`):
+
+| Mode | When | Extra knobs |
+| --- | --- | --- |
+| At/above cost + edge | Default unwind | Size from the dedicated exit cap below |
+| Underwater | Ask would be below cost+edge, age ≥ `ALPHA_UNDERWATER_EXIT_MIN_AGE_HOURS` | Off with `ALPHA_UNDERWATER_EXIT_ENABLED=false`. Loss floor `ALPHA_UNDERWATER_EXIT_MAX_LOSS_CENTS`. |
+| Stale | Age ≥ `ALPHA_STALE_INVENTORY_AGE_HOURS` | Wider floor `ALPHA_STALE_INVENTORY_MAX_LOSS_CENTS` so the ask can actually rest near the book |
+
+**Sizing** is independent of spread-entry order caps:
+
+| Variable | Role |
+| --- | --- |
+| `ALPHA_INVENTORY_EXIT_MAX_NOTIONAL_USD` | Ceiling per exit ask (`.env.example` 60; code default 50) |
+| `ALPHA_INVENTORY_EXIT_FULL_POSITION` | `true` (default): size remaining shares up to that ceiling. `false`: drip using spread target size; underwater also honours `ALPHA_UNDERWATER_EXIT_MAX_MARKET_LOSS_USD` |
+| `ALPHA_UNDERWATER_EXIT_MAX_NOTIONAL_USD` | Extra underwater notional cap (combined with the dedicated ceiling — the larger of the two) |
+| `ALPHA_SPREAD_EXIT_SLOT_RESERVE` | How many exits are queued **ahead of** new entries (default 2). Remaining exits still place after entries; they do **not** consume reward/spread open-order slots |
+| `ALPHA_SPREAD_EXIT_MIN_DWELL_SECONDS` | Keep a resting profitable exit unless it is undersized vs the current unwind target |
+
+Live placement only submits asks with `source: "inventory_exit"`. Tick logs include `Inventory audit` / `Exit audit` lines when a position has no planned ask.
+
+### Risk governor (inventory ceiling)
+
+`ALPHA_MAX_INVENTORY_NOTIONAL_USD` is the **inventory governor**. Inventory notional is cost basis: `Σ (yesShares × avgYesCost + noShares × avgNoCost)` — the same number `checkQuoteRisk` uses. Resting exit asks count as ask coverage (they reduce **net** exposure, not this ceiling).
+
+| Value | Behaviour |
+| --- | --- |
+| `0` (code default if the var is omitted) | Governor **off** |
+| `> 0` (`.env.example` uses `40`) | When held inventory ≥ ceiling, **pause new reward/spread entry bids**. Exits, merges, and claims still run. Parity already ran earlier in the tick. |
+
+The live tick also refuses a reward/spread **bid** in `checkQuoteRisk` once inventory is at/above the ceiling. Lane exposure / open-order caps (`ALPHA_REWARD_*` / `ALPHA_SPREAD_*`, plus the shared `ALPHA_MAX_*` fallbacks) still apply to **entries**; inventory-exit asks skip those lane caps so an oversized book can still unwind. Exits are still blocked if they would sell more shares than held, exceed the unwind notional cap, or sit at a price outside `(0, 1)`.
+
+### Fail-closed vs place-anyway
+
+| Gate | Reward/spread **entries** | Inventory **exits** |
+| --- | --- | --- |
+| Plan review (zs-proxy / JSON / incomplete model decision) | **Fail-closed** — drop that entry. Always on; no env off-switch. Prompt: [`src/alpha/planReview/prompt.ts`](./src/alpha/planReview/prompt.ts) | **Place-anyway** — exits are not sent to the model and stay on the queue |
+| zs-proxy down | Same fail-closed | Same place-anyway |
+| Inventory governor | Blocked | Place-anyway |
+| Lane open-order / exposure caps | Blocked | Skip those caps (still sized + inventory-covered) |
+| Incomplete Amarok scan | Skip the whole place/cancel quote pass | Skip the whole place/cancel quote pass |
+| Dry-run (`alpha:live-dry-run`) | `Would place` only | `Would place` only |
+
+`config/operator-preferences.md` (or Spaces `{DO_SPACES_PREFIX}/operator-preferences.md`) is **prose for plan review of entries only**. It does not size exits, flip the governor, or override env caps. Non-empty prefs also switch host research onto lane MCP tools — see [`config/operator-preferences.example.md`](./config/operator-preferences.example.md).
 
 ## Leftover env cleanup
 

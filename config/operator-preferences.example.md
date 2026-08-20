@@ -45,3 +45,6 @@ quotes.
   versus visible depth.
 - Fail closed (reject) when book, expiry, or inventory fields look incomplete.
   Do not invent a size.
+- Inventory-exit asks and `ALPHA_MAX_INVENTORY_NOTIONAL_USD` are **host/env**
+  gates (see QUICKSTART.md §10). Prefs cannot size exits, skip plan review, or
+  override the governor. Plan review never sees inventory exits.
