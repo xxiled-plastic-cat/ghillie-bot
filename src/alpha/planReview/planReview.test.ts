@@ -119,6 +119,12 @@ describe("planReview prompt", () => {
     assert.doesNotMatch(PLAN_REVIEW_PROMPT, /amarok_/);
     assert.doesNotMatch(PLAN_REVIEW_PROMPT, /ALPHA_ENABLE_/);
   });
+
+  it("never mentions mnemonics, payment signatures, or execution tools", () => {
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /mnemonic/i);
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /paymentSignature/);
+    assert.doesNotMatch(PLAN_REVIEW_PROMPT, /amarok_get_execution_quote/);
+  });
 });
 
 describe("planReview payload", () => {
@@ -482,5 +488,59 @@ describe("planReview runPlanReview", () => {
     assert.match(capturedInstructions ?? "", /You are Ghillie's plan reviewer/);
     assert.match(capturedInstructions ?? "", /This is not financial advice/);
     assert.match(capturedInstructions ?? "", /Never invent a size/);
+  });
+
+  it("sends tools-off host payload with no mnemonic, paymentSignature, or execution tools", async () => {
+    const entry = quote({
+      side: "bid",
+      outcome: "YES",
+      source: "reward",
+      reason: "Amarok suggested quote",
+    });
+    const id = entryReviewId(entry, 0);
+    let captured: Record<string, unknown> | undefined;
+    const client: ResponsesClient = {
+      responses: {
+        async create(request) {
+          captured = request as Record<string, unknown>;
+          return {
+            data: messageResponse(
+              JSON.stringify({
+                decisions: [{ id, action: "approve", reasons: [] }],
+              }),
+            ),
+          };
+        },
+      },
+    };
+
+    await runPlanReview({
+      placementQueue: [entry],
+      state: emptyAlphaState(100),
+      orderbooks: new Map([[APP_ID, twoSidedBook()]]),
+      markets: new Map([
+        [
+          APP_ID,
+          market(APP_ID, {
+            endTs: 1_800_000_000,
+            closeTime: "2027-01-01T00:00:00.000Z",
+          }),
+        ],
+      ]),
+      config: testConfig(),
+      responsesClient: client,
+      skipHealthCheck: true,
+      model: "test-model",
+      reasoningEffort: "low",
+      operatorPreferences: "",
+    });
+
+    assert.ok(captured);
+    const serialized = JSON.stringify(captured);
+    assert.equal(captured.tools, undefined);
+    assert.doesNotMatch(serialized, /mnemonic/i);
+    assert.doesNotMatch(serialized, /paymentSignature/);
+    assert.doesNotMatch(serialized, /amarok_get_execution_quote/);
+    assert.equal(captured.store, false);
   });
 });

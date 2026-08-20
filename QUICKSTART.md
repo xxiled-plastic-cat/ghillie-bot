@@ -30,7 +30,7 @@ Edit `.env`. Do not paste the mnemonic into chat, issues, or logs.
 | `ALPHA_ENABLE_LIVE_TRADING` / `ALPHA_CONFIRM_RISK` | Leave **`false`**. `alpha:live` and Docker live cron refuse to start unless both are `true`. |
 | `ALPHA_CRON_COMMAND` | Already the dry-run tick (`alpha:live-dry-run`). |
 | `ALPHA_API_KEY` | Optional for discovery. Needed for Alpha SDK **wallet open-order sync** on a full dry-run / live tick. |
-| DigitalOcean Spaces | Optional. Omit all `DO_SPACES_*` to write state under `BOT_STATE_DATA_DIR` (default `data/bot-states`). Dry-run does not persist bot-state. |
+| DigitalOcean Spaces | Optional. Omit all `DO_SPACES_*` to write state under `BOT_STATE_DATA_DIR` (default `data/bot-states`). Dry-run does not persist **trading** bot-state; Amarok x402 spend counters are still written so `/status` can show daily used. |
 | Docker file-keyring passphrase | Required **only** for Docker. Name is in `.env.example`. Local host zs-proxy can use the OS keychain. |
 
 Fund that hot wallet on **Algorand mainnet** before paid steps:
@@ -99,7 +99,7 @@ npm run alpha:cron:live-dry-run -- --once
 
 Equivalent single tick without the cron wrapper: `npm run 'alpha:live-dry-run'`.
 
-You should see `GHILLIE ALPHA LIVE DRY RUN` and actions such as `Would place …` / `Would cancel …` (no submit). Research still paid Amarok x402; entry quotes still hit zs-proxy plan-review (fail-closed if the proxy is down). Bot-state is **not** written in dry-run.
+You should see `GHILLIE ALPHA LIVE DRY RUN` and actions such as `Would place …` / `Would cancel …` (no submit). Research still paid Amarok x402; entry quotes still hit zs-proxy plan-review (fail-closed if the proxy is down). Trading bot-state is **not** written in dry-run. Amarok x402 spend counters **are** updated on bot-state so Telegram `/status` can show today's used + remaining.
 
 ## 7. Dry-run cron loop
 
@@ -120,7 +120,7 @@ Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (leave `TELEGRAM_DISABLE_NOTIFIC
 | Command | Effect |
 | --- | --- |
 | `/help` | List commands |
-| `/status` | Cron health + lane status |
+| `/status` | Cron health, lane status, Amarok x402 daily used + remaining (UTC) |
 | `/lanes` | Compact lane on/off |
 | `/lane <reward\|spread\|parity> <on\|off\|default>` | Override a lane; applies on the **next** tick (stored in bot-state) |
 

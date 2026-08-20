@@ -40,6 +40,8 @@ export type AlphaMarket = {
   liquidity?: number;
   reward: AlphaRewardInfo;
   raw: unknown;
+  /** Amarok `get_quotes` suggestions for this market, when the scan included them. */
+  suggestedQuotes?: AlphaQuote[];
 };
 
 export type AlphaBookLevel = {
@@ -224,6 +226,18 @@ export type AlphaBotState = {
   };
   notificationState?: {
     lastDailySummaryDate?: string;
+  };
+  /**
+   * UTC daily Amarok x402 spend counters (operator-trust visibility).
+   * Amounts are USDC base units (micro-USDC). Never store paymentSignature.
+   */
+  x402Spend?: {
+    utcDate: string;
+    spentBaseUnits: string;
+    callCount: number;
+    lastRunBaseUnits: string;
+    lastRunCallCount: number;
+    updatedAt: string;
   };
   capitalLedger?: {
     lastScanAt: string;

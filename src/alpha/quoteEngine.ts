@@ -115,6 +115,79 @@ function expectedLossUsd(averageCost: number, ask: number, shares: number): numb
   return Math.max(0, (averageCost - ask) * shares);
 }
 
+function entryLegKey(quote: Pick<AlphaQuote, "outcome" | "side" | "source">): string {
+  return `${quote.outcome}:${quote.side}:${quote.source}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+/**
+ * Amarok `get_quotes` rows attached by `scanFromAmarok` (`suggestedQuotes` or
+ * legacy `raw.amarokQuotes`). Inventory-exit asks are never taken from Amarok.
+ */
+export function suggestedQuotesFromMarket(market: AlphaMarket): AlphaQuote[] {
+  if (market.suggestedQuotes && market.suggestedQuotes.length > 0) {
+    return market.suggestedQuotes;
+  }
+  const raw = isRecord(market.raw) ? market.raw.amarokQuotes : undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((row): row is AlphaQuote => {
+    if (!isRecord(row)) return false;
+    return (
+      typeof row.price === "number" &&
+      typeof row.sizeShares === "number" &&
+      (row.outcome === "YES" || row.outcome === "NO") &&
+      (row.side === "bid" || row.side === "ask") &&
+      (row.source === "reward" || row.source === "spread" || row.source === "inventory_exit")
+    );
+  });
+}
+
+function laneEnabledForSource(source: AlphaQuote["source"], config: AlphaConfig): boolean {
+  if (source === "reward") return config.enableRewardLane;
+  if (source === "spread") return config.enableSpreadLane && config.enableSpreadCapture;
+  return false;
+}
+
+function adoptAmarokSuggestedQuote(
+  quote: AlphaQuote,
+  market: AlphaMarket,
+  config: AlphaConfig,
+): AlphaQuote | undefined {
+  if (quote.marketAppId !== market.marketAppId) return undefined;
+  if (quote.side !== "bid") return undefined;
+  if (quote.source !== "reward" && quote.source !== "spread") return undefined;
+  if (!laneEnabledForSource(quote.source, config)) return undefined;
+  if (quote.source === "reward" && !rewardLaneAllowsMarket(market, config)) return undefined;
+  if (!(quote.price > 0 && quote.price < 1)) return undefined;
+  if (!(quote.sizeShares > 0)) return undefined;
+
+  const maxUsd =
+    quote.source === "reward" ? config.rewardMaxOrderSizeUsd : config.spreadMaxOrderSizeUsd;
+  const rawNotional = quote.notionalUsd > 0 ? quote.notionalUsd : quote.price * quote.sizeShares;
+  const sized =
+    rawNotional <= maxUsd + 1e-9
+      ? { sizeShares: quote.sizeShares, notionalUsd: rawNotional }
+      : quoteSize(quote.price, maxUsd);
+  if (!sized) return undefined;
+
+  const reason = /amarok/i.test(quote.reason) ? quote.reason : `Amarok suggested: ${quote.reason}`;
+  return {
+    ...quote,
+    id: quote.id || `amarok:${market.marketAppId}:${quote.outcome}:${quote.side}:${quote.source}`,
+    marketId: market.id,
+    marketAppId: market.marketAppId,
+    slug: market.slug ?? quote.slug,
+    title: market.title,
+    sizeShares: sized.sizeShares,
+    notionalUsd: sized.notionalUsd,
+    reason,
+    estimatedRewardUsdPerDay: quote.estimatedRewardUsdPerDay ?? market.reward.dailyRewardsUsd,
+  };
+}
+
 function existingControlledMarketLossUsd(state: AlphaBotState, marketAppId: number): number {
   return state.openOrders
     .filter(
@@ -188,6 +261,16 @@ export function generateQuotes(
   config: AlphaConfig,
 ): AlphaQuote[] {
   const quotes: AlphaQuote[] = [];
+  const coveredLegs = new Set<string>();
+  for (const suggested of suggestedQuotesFromMarket(market)) {
+    const adopted = adoptAmarokSuggestedQuote(suggested, market, config);
+    if (!adopted) continue;
+    const key = entryLegKey(adopted);
+    if (coveredLegs.has(key)) continue;
+    coveredLegs.add(key);
+    quotes.push(adopted);
+  }
+
   const rewardLaneEnabled = config.enableRewardLane;
   const rewardLaneMarket = rewardLaneAllowsMarket(market, config);
   const spreadLaneEnabled = config.enableSpreadLane && config.enableSpreadCapture;
@@ -253,26 +336,29 @@ export function generateQuotes(
         rewardMinContracts === undefined ||
         (sized !== undefined && sized.sizeShares + 1e-9 >= rewardMinContracts);
       if (sized && meetsMinContracts) {
-        quotes.push({
-          id: `${market.marketAppId}:${outcome}:bid:${Date.now()}`,
-          marketId: market.id,
-          marketAppId: market.marketAppId,
-          slug: market.slug,
-          title: market.title,
-          outcome,
-          side: "bid",
-          price: bid,
-          ...sized,
-          reason: rewardEligible
-            ? "reward-zone bid near midpoint; market minimum checked in aggregate"
-            : "spread-capture bid",
-          rewardEligible,
-          rewardZoneDistanceCents:
-            rewardSpread !== undefined ? Math.abs(midpoint - bid) * 100 : undefined,
-          rewardMinContracts,
-          estimatedRewardUsdPerDay: market.reward.dailyRewardsUsd,
-          source: market.reward.isRewardMarket ? "reward" : "spread",
-        });
+        const source: AlphaQuote["source"] = market.reward.isRewardMarket ? "reward" : "spread";
+        if (!coveredLegs.has(entryLegKey({ outcome, side: "bid", source }))) {
+          quotes.push({
+            id: `${market.marketAppId}:${outcome}:bid:${Date.now()}`,
+            marketId: market.id,
+            marketAppId: market.marketAppId,
+            slug: market.slug,
+            title: market.title,
+            outcome,
+            side: "bid",
+            price: bid,
+            ...sized,
+            reason: rewardEligible
+              ? "reward-zone bid near midpoint; market minimum checked in aggregate"
+              : "spread-capture bid",
+            rewardEligible,
+            rewardZoneDistanceCents:
+              rewardSpread !== undefined ? Math.abs(midpoint - bid) * 100 : undefined,
+            rewardMinContracts,
+            estimatedRewardUsdPerDay: market.reward.dailyRewardsUsd,
+            source,
+          });
+        }
       }
     }
 
@@ -289,7 +375,7 @@ export function generateQuotes(
       );
       const sized =
         spreadNotionalUsd === undefined ? undefined : quoteSize(spreadBid, spreadNotionalUsd);
-      if (sized) {
+      if (sized && !coveredLegs.has(entryLegKey({ outcome, side: "bid", source: "spread" }))) {
         quotes.push({
           id: `${market.marketAppId}:${outcome}:spread-bid:${Date.now()}`,
           marketId: market.id,

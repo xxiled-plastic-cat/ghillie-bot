@@ -115,9 +115,9 @@ Before shipping any LLM decide / research agent:
 
 ### 8. Product / trading follow-ups
 
-- [ ] Optional: consume Amarok suggested quotes more directly in `quoteEngine` (less local rediscovery)
+- [x] Optional: consume Amarok suggested quotes more directly in `quoteEngine` (less local rediscovery)
 - [ ] Inventory-exit and risk governor docs for open-source operators
-- [ ] Telegram report copy updated for Amarok x402 spend totals (like brownie Canix payment lines)
+- [x] Telegram report copy updated for Amarok x402 spend totals (like brownie Canix payment lines)
 - [x] Telegram operator commands on alpha cron: `/help` `/status` `/lanes` `/lane <reward|spread|parity> <on|off|default>` (durable bot-state overrides; next tick)
 
 ---

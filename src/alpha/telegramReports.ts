@@ -15,6 +15,12 @@ import {
   truncatePlainReport,
   truncateRichReport,
 } from "./telegramNotifier.js";
+import {
+  formatAmarokX402DailyLine,
+  formatAmarokX402ThisRunLine,
+  sumPaymentBaseUnits,
+  type X402SpendLane,
+} from "./x402Spend.js";
 
 const MAX_ACTION_ROWS = 8;
 const TICK_START_PLAIN = "======== Ghillie tick ========";
@@ -25,6 +31,8 @@ const TICK_END_RICH = "━━ end tick ━━";
 export type TelegramSpendInput = {
   payments?: Array<Pick<PaymentReceipt, "amountBaseUnits">>;
   inferenceCostLine?: string;
+  /** UTC daily Amarok x402 used + remaining (from bot-state counters). */
+  daily?: X402SpendLane;
 };
 
 export type TickActionSummary = {
@@ -268,8 +276,12 @@ function buildSpendPlainLines(spend: TelegramSpendInput | undefined): string[] {
   const lines: string[] = [];
   const payments = spend.payments ?? [];
   if (payments.length > 0) {
-    const total = payments.reduce((sum, payment) => sum + BigInt(payment.amountBaseUnits), 0n);
-    lines.push(`Amarok x402: ${payments.length} call(s), ${total.toString()} USDC base units`);
+    lines.push(
+      formatAmarokX402ThisRunLine(payments.length, sumPaymentBaseUnits(payments), "plain"),
+    );
+  }
+  if (spend.daily) {
+    lines.push(formatAmarokX402DailyLine(spend.daily, "plain"));
   }
   if (spend.inferenceCostLine) {
     lines.push(spend.inferenceCostLine);
@@ -282,10 +294,10 @@ function buildSpendRichLines(spend: TelegramSpendInput | undefined): string[] {
   const lines: string[] = [];
   const payments = spend.payments ?? [];
   if (payments.length > 0) {
-    const total = payments.reduce((sum, payment) => sum + BigInt(payment.amountBaseUnits), 0n);
-    lines.push(
-      `Amarok x402: **${payments.length}** call(s), \`${total.toString()}\` USDC base units`,
-    );
+    lines.push(formatAmarokX402ThisRunLine(payments.length, sumPaymentBaseUnits(payments), "rich"));
+  }
+  if (spend.daily) {
+    lines.push(formatAmarokX402DailyLine(spend.daily, "rich"));
   }
   if (spend.inferenceCostLine) {
     lines.push(escapeRichMarkdown(spend.inferenceCostLine));
@@ -298,10 +310,10 @@ function buildSpendHtmlLines(spend: TelegramSpendInput | undefined): string[] {
   const lines: string[] = [];
   const payments = spend.payments ?? [];
   if (payments.length > 0) {
-    const total = payments.reduce((sum, payment) => sum + BigInt(payment.amountBaseUnits), 0n);
-    lines.push(
-      `Amarok x402: <b>${payments.length}</b> call(s), <code>${escapeHtml(total.toString())}</code> USDC base units`,
-    );
+    lines.push(formatAmarokX402ThisRunLine(payments.length, sumPaymentBaseUnits(payments), "html"));
+  }
+  if (spend.daily) {
+    lines.push(formatAmarokX402DailyLine(spend.daily, "html"));
   }
   if (spend.inferenceCostLine) {
     lines.push(escapeHtml(spend.inferenceCostLine));
@@ -327,8 +339,9 @@ function mergeSpend(
   const inferenceCostLine =
     spend?.inferenceCostLine ?? (actions ? extractInferenceCostLine(actions) : undefined);
   const payments = spend?.payments;
-  if ((!payments || payments.length === 0) && !inferenceCostLine) return undefined;
-  return { payments, inferenceCostLine };
+  const daily = spend?.daily;
+  if ((!payments || payments.length === 0) && !inferenceCostLine && !daily) return undefined;
+  return { payments, inferenceCostLine, daily };
 }
 
 function snapshotLinesPlain(
