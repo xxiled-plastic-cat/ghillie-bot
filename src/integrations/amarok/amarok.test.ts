@@ -6,7 +6,11 @@ import {
   parseExecutionQuotePayload,
   regroupUnsignedTransactions,
 } from "../algorand/submitUnsigned.js";
-import { scanFromAmarok } from "./adapters.js";
+import {
+  formatIncompleteScanSkipMessage,
+  isIncompleteAmarokScan,
+  scanFromAmarok,
+} from "./adapters.js";
 import { parseToolPayload } from "./client.js";
 import { AlgorandPaymentBuilder, encodePaymentNote } from "./payment.js";
 import { walletFromMnemonic } from "./wallet.js";
@@ -68,6 +72,26 @@ test("rejects payment above Amarok endpoint ceiling", async () => {
     () => builder().build(paymentRequest("50001", "/v1/alpha/parity")),
     /endpoint ceiling/,
   );
+  await assert.rejects(
+    () => builder().build(paymentRequest("200001", "/v1/alpha/bundle")),
+    /endpoint ceiling/,
+  );
+  await assert.rejects(
+    () => builder().build(paymentRequest("300001", "/v1/alpha/session")),
+    /endpoint ceiling/,
+  );
+});
+
+test("builds payment signature for bundle and session paths", async () => {
+  for (const [path, amount] of [
+    ["/v1/alpha/bundle", "20000"],
+    ["/v1/alpha/session", "30000"],
+  ] as const) {
+    const built = await builder().build(paymentRequest(amount, path));
+    assert.ok(built.paymentSignature.length > 20);
+    assert.equal(built.receipt.resourcePath, path);
+    assert.equal(built.receipt.amountBaseUnits, amount);
+  }
 });
 
 test("rejects unexpected resource origin", async () => {
@@ -291,5 +315,91 @@ test("scanFromAmarok attaches suggested quotes to scan and reward markets", () =
   assert.equal(
     (scanMarket?.raw as { amarokQuotes?: unknown[] } | undefined)?.amarokQuotes?.length,
     1,
+  );
+});
+
+test("scanFromAmarok reads completeness flags and skips synthetic books when timedOut", () => {
+  const scan = scanFromAmarok({
+    scanPayload: {
+      data: {
+        timedOut: true,
+        capped: true,
+        candidateCount: 40,
+        orderbookErrors: 2,
+        markets: [
+          {
+            marketAppId: 3100000004,
+            title: "Partial",
+            status: "live",
+            resolved: false,
+            yesPrice: 0.5,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(scan.scanCompleteness?.timedOut, true);
+  assert.equal(scan.scanCompleteness?.capped, true);
+  assert.equal(scan.scanCompleteness?.candidateCount, 40);
+  assert.equal(scan.scanCompleteness?.orderbookErrors, 2);
+  assert.equal(scan.orderbooks.has(3100000004), false);
+});
+
+test("scanFromAmarok still synthesizes missing books when scan is complete", () => {
+  const scan = scanFromAmarok({
+    scanPayload: {
+      data: {
+        timedOut: false,
+        orderbookErrors: 0,
+        markets: [
+          {
+            marketAppId: 3100000005,
+            title: "Complete",
+            status: "live",
+            resolved: false,
+            yesPrice: 0.5,
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(scan.scanCompleteness?.timedOut, false);
+  assert.ok(scan.orderbooks.has(3100000005));
+});
+
+test("isIncompleteAmarokScan and skip message", () => {
+  assert.equal(isIncompleteAmarokScan(undefined), false);
+  assert.equal(
+    isIncompleteAmarokScan({
+      timedOut: false,
+      capped: true,
+      orderbookErrors: 0,
+    }),
+    false,
+  );
+  assert.equal(
+    isIncompleteAmarokScan({
+      timedOut: true,
+      capped: false,
+      orderbookErrors: 0,
+    }),
+    true,
+  );
+  assert.equal(
+    isIncompleteAmarokScan({
+      timedOut: false,
+      capped: false,
+      orderbookErrors: 1,
+    }),
+    true,
+  );
+  assert.match(
+    formatIncompleteScanSkipMessage({
+      timedOut: true,
+      capped: true,
+      candidateCount: 12,
+      orderbookErrors: 2,
+    }),
+    /No live placements; Amarok scan incomplete/,
   );
 });

@@ -3,6 +3,10 @@ import {
   parseExecutionQuotePayload,
   signAndSubmitUnsignedGroup,
 } from "../integrations/algorand/submitUnsigned.js";
+import {
+  formatIncompleteScanSkipMessage,
+  isIncompleteAmarokScan,
+} from "../integrations/amarok/adapters.js";
 import type { PaymentReceipt } from "../integrations/amarok/payment.js";
 import { createAmarokRuntime } from "../integrations/amarok/runtime.js";
 import { isDebugModeEnabled } from "../utils/debugMode.js";
@@ -1481,6 +1485,15 @@ export async function runLiveTick(
       kind: "skip",
       message: "All execution lanes disabled (reward/spread/parity); reporting summary only",
     });
+    state.strategyStats.lastRunMode = mode;
+    if (mode === "live") await saveAlphaState(config.stateKey, state);
+    return finalLiveTickResult(liveClient, config, actions, state);
+  }
+
+  if (isIncompleteAmarokScan(scan.scanCompleteness) && scan.scanCompleteness) {
+    const message = formatIncompleteScanSkipMessage(scan.scanCompleteness);
+    actions.push({ kind: "skip", message });
+    console.warn(`[ghillie-live] ${message}`);
     state.strategyStats.lastRunMode = mode;
     if (mode === "live") await saveAlphaState(config.stateKey, state);
     return finalLiveTickResult(liveClient, config, actions, state);

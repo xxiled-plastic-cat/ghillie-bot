@@ -66,6 +66,7 @@ function sanitizeSchemaNode(node: unknown): void {
     const properties = record.properties as Record<string, unknown>;
     for (const key of [
       "paymentSignature",
+      "sessionToken",
       "address",
       "userAddress",
       "agentAddress",
@@ -82,6 +83,7 @@ function sanitizeSchemaNode(node: unknown): void {
     record.required = record.required.filter(
       (name) =>
         name !== "paymentSignature" &&
+        name !== "sessionToken" &&
         name !== "address" &&
         name !== "userAddress" &&
         name !== "agentAddress" &&

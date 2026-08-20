@@ -28,7 +28,7 @@ Wire inference like [brownie-bot](https://github.com/compx-labs): **ZeroSignal v
 - [x] Fail closed if zs-proxy is down (`assertZsProxyHealthy`); no silent provider switch
 - [x] Document expected ZeroSignal + Amarok x402 spend (README)
 - [x] `AI_MODE` env shape: `full` (tool loop) vs `lite` (host-prefetch + decide-only); research tools only for the model; `amarok_get_execution_quote` host-only
-- [x] Docker sidecar: image bundles **zs-proxy 0.15.1**, entrypoint imports wallet / funds / starts proxy, then `alpha:cron:live` (`Dockerfile`, `docker/entrypoint.sh`, `docker-compose.yml`)
+- [x] Docker sidecar: image bundles **zs-proxy 0.16.1**, entrypoint imports wallet / funds / starts proxy, then `alpha:cron:live` (`Dockerfile`, `docker/entrypoint.sh`, `docker-compose.yml`)
 - [x] Smoke: `npm run zs:smoke` / `npm run docker:smoke`
 - [x] Tests assert `store: false` and absent `previous_response_id` on first and follow-up calls
 - [x] Strip wallet / payment fields from MCP schemas shown to the model (`prepareAgentTools`)

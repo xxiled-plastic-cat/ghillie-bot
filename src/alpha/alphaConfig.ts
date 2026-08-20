@@ -4,9 +4,18 @@ import type { ZeroSignalReasoningEffort } from "../integrations/zerosignal/confi
 
 export type AlphaMode = "scan" | "paper" | "live-dry-run" | "live";
 
+/** Amarok 1.4.0 research billing SKU for covered GETs (scan stays per-request). */
+export type AmarokResearchSku = "off" | "bundle" | "session";
+
 export type AlphaConfig = {
   amarokMcpUrl: string;
   maxDailyX402BaseUnits: bigint;
+  /**
+   * Opt-in Amarok 1.4.0 research SKU. Default `off` keeps per-request 402 on
+   * quotes/lanes/opportunities. `bundle` (legacy mode) and `session` (lane mode)
+   * require a 1.4.0+ MCP and fall back to per-request when tools are missing.
+   */
+  amarokResearchSku: AmarokResearchSku;
   /**
    * Alpha Arcade partners API key. Still required for SDK venue-ops that Amarok
    * does not expose yet (wallet open-order sync, and some market metadata paths).
@@ -155,6 +164,12 @@ function readPlanReviewReasoningEffort(): ZeroSignalReasoningEffort | undefined 
   return undefined;
 }
 
+function readAmarokResearchSku(): AmarokResearchSku {
+  const raw = process.env.AMAROK_RESEARCH_SKU?.toLowerCase().trim();
+  if (raw === "bundle" || raw === "session" || raw === "off") return raw;
+  return "off";
+}
+
 export function readAlphaConfig(): AlphaConfig {
   const walletMnemonic = process.env.ALPHA_WALLET_MNEMONIC || undefined;
   const derivedWalletAddress = walletMnemonic
@@ -165,6 +180,7 @@ export function readAlphaConfig(): AlphaConfig {
     maxDailyX402BaseUnits: BigInt(
       Math.max(0, Math.floor(readNumber("MAX_DAILY_X402_BASE_UNITS", 5_000_000))),
     ),
+    amarokResearchSku: readAmarokResearchSku(),
     apiKey: process.env.ALPHA_API_KEY || undefined,
     algodServer: process.env.ALPHA_ALGOD_SERVER || "https://mainnet-api.4160.nodely.io",
     algodToken: process.env.ALGORAND_TOKEN || undefined,

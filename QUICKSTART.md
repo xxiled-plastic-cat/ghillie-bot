@@ -57,7 +57,7 @@ LLM calls go **only** through zs-proxy (OpenAI-compatible). No OpenAI/Anthropic 
 ```bash
 # macOS:
 #   brew install txnlab/tap/zs-proxy
-# Linux: same binary the Docker image uses (zs-proxy 0.15.1), e.g.
+# Linux: same binary the Docker image uses (zs-proxy 0.16.1), e.g.
 #   https://github.com/TxnLab/zs-proxy/releases
 
 printf '%s\n' "$ALPHA_WALLET_MNEMONIC" | zs-proxy wallet import --stdin --yes --force

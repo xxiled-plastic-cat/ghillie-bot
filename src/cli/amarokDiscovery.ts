@@ -20,6 +20,16 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(health, null, 2));
     console.log("\nAmarok discovery (truncated):");
     console.log(JSON.stringify(discovery, null, 2).slice(0, 4_000));
+    const billing =
+      discovery && typeof discovery === "object"
+        ? (discovery as { billing?: unknown }).billing
+        : undefined;
+    if (billing) {
+      console.log("\nAmarok billing (1.4.0+):");
+      console.log(JSON.stringify(billing, null, 2));
+    } else {
+      console.log("\nAmarok billing: not present (MCP older than 1.4.0)");
+    }
     console.log("\nExecution shapes:");
     console.log(JSON.stringify(shapes, null, 2));
   } finally {
