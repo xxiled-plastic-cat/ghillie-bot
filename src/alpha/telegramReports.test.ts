@@ -31,6 +31,13 @@ describe("telegramReports", () => {
       ],
       spend: {
         payments: [{ amountBaseUnits: "50000" }, { amountBaseUnits: "25000" }],
+        daily: {
+          usedUsdc: "0.075",
+          capUsdc: "5",
+          remainingUsdc: "4.925",
+          uncapped: false,
+          callCount: 2,
+        },
       },
       at: "2026-08-01T12:00:00.000Z",
     });
@@ -49,8 +56,14 @@ describe("telegramReports", () => {
     assert.match(report.rich, /### Action details/);
     assert.match(report.rich, /\| Kind \| Detail \|/);
     assert.match(report.rich, /### Spend/);
-    assert.match(report.rich, /Amarok x402: \*\*2\*\* call\(s\), `75000` USDC base units/);
+    assert.match(report.rich, /Amarok x402: \*\*2\*\* call\(s\), `\$0\.075` USDC/);
+    assert.match(
+      report.rich,
+      /Amarok x402 today \(UTC\): \*\*\$0\.075\*\* used, \*\*\$4\.925 remaining\*\*/,
+    );
     assert.match(report.rich, /ZeroSignal inference/);
+    assert.doesNotMatch(report.rich, /paymentSignature/);
+    assert.doesNotMatch(report.plain, /USDC base units/);
     assert.match(report.rich, /<details>/);
     assert.match(report.rich, /Warnings/);
 
@@ -89,6 +102,13 @@ describe("telegramReports", () => {
       spend: {
         payments: [{ amountBaseUnits: "100000" }],
         inferenceCostLine: "ZeroSignal inference: 2 request(s), $0.01 USDC",
+        daily: {
+          usedUsdc: "0.1",
+          capUsdc: "5",
+          remainingUsdc: "4.9",
+          uncapped: false,
+          callCount: 1,
+        },
       },
       at: "2026-08-01",
     });
@@ -98,13 +118,14 @@ describe("telegramReports", () => {
     assert.match(report.plain, /Trading realised/);
     assert.match(report.plain, /Total economic/);
     assert.match(report.plain, /Lifetime: placed=9 cancelled=2/);
-    assert.match(report.plain, /Amarok x402: 1 call\(s\), 100000 USDC base units/);
+    assert.match(report.plain, /Amarok x402: 1 call\(s\), \$0\.1 USDC/);
+    assert.match(report.plain, /Amarok x402 today \(UTC\): \$0\.1 used, \$4\.9 remaining/);
     assert.match(report.rich, /### Ghillie daily/);
     assert.match(report.rich, /### Bids/);
     assert.match(report.rich, /### Spend/);
   });
 
-  it("omits Spend section when no payments or inference", () => {
+  it("omits Spend section when no payments, daily, or inference", () => {
     const report = formatTickDigestReport({
       state: emptyAlphaState(10),
       actions: [{ kind: "skip", message: "Nothing to do" }],
@@ -113,6 +134,25 @@ describe("telegramReports", () => {
     assert.doesNotMatch(report.rich, /### Spend/);
     assert.doesNotMatch(report.html, /<b>Spend<\/b>/);
     assert.doesNotMatch(report.plain, /^Spend:/m);
+  });
+
+  it("includes daily remaining when only daily spend is provided", () => {
+    const report = formatDailySummaryReport({
+      state: emptyAlphaState(10),
+      spend: {
+        daily: {
+          usedUsdc: "0",
+          capUsdc: "5",
+          remainingUsdc: "5",
+          uncapped: false,
+          callCount: 0,
+        },
+      },
+      at: "2026-08-01",
+    });
+    assert.match(report.plain, /Amarok x402 today \(UTC\): \$0 used, \$5 remaining/);
+    assert.match(report.rich, /### Spend/);
+    assert.doesNotMatch(report.plain, /paymentSignature/);
   });
 
   it("summarizes tick actions and extracts inference cost line", () => {

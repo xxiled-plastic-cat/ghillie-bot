@@ -72,6 +72,7 @@ function normalizeAlphaState(parsed: AlphaBotState, startingBalance: number): Al
       ...parsed.strategyStats,
     },
     notificationState: parsed.notificationState ?? {},
+    x402Spend: parsed.x402Spend,
     capitalLedger: parsed.capitalLedger,
   };
   migratePositionsToAppIdKeys(state);
