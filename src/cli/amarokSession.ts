@@ -12,7 +12,9 @@ async function main(): Promise<void> {
     }
     const session = runtime.client.getResearchSession();
     if (session) {
-      console.log(`session token expiresAt=${session.expiresAt} ttlSeconds=${session.ttlSeconds ?? "?"}`);
+      console.log(
+        `session token expiresAt=${session.expiresAt} ttlSeconds=${session.ttlSeconds ?? "?"}`,
+      );
     }
     console.log(JSON.stringify(result.data, null, 2));
   } finally {

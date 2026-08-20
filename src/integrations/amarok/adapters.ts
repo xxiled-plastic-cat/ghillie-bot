@@ -271,9 +271,7 @@ export function isIncompleteAmarokScan(completeness: AmarokScanCompleteness | un
 export function formatIncompleteScanSkipMessage(completeness: AmarokScanCompleteness): string {
   const parts = [
     completeness.timedOut ? "timedOut=true" : null,
-    completeness.orderbookErrors > 0
-      ? `orderbookErrors=${completeness.orderbookErrors}`
-      : null,
+    completeness.orderbookErrors > 0 ? `orderbookErrors=${completeness.orderbookErrors}` : null,
     completeness.capped ? "capped=true" : null,
     completeness.candidateCount !== undefined
       ? `candidateCount=${completeness.candidateCount}`

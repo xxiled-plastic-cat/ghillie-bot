@@ -308,7 +308,8 @@ test("scanFromAmarok attaches suggested quotes onto market.raw", () => {
   });
   const scanMarket = scan.markets.find((market) => market.marketAppId === 3100000003);
   assert.equal(
-    (scanMarket?.raw as { amarokQuotes?: Array<{ price: number }> } | undefined)?.amarokQuotes?.length,
+    (scanMarket?.raw as { amarokQuotes?: Array<{ price: number }> } | undefined)?.amarokQuotes
+      ?.length,
     1,
   );
   assert.equal(

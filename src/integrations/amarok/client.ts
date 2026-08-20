@@ -287,7 +287,11 @@ export class AmarokClient {
     walletAddress: string,
     args: Record<string, unknown> = {},
   ): Promise<ManagedToolResult> {
-    const result = await this.callManagedTool("amarok_create_research_session", args, walletAddress);
+    const result = await this.callManagedTool(
+      "amarok_create_research_session",
+      args,
+      walletAddress,
+    );
     const session = extractResearchSession(result.data);
     if (session) {
       this.setResearchSession(session);

@@ -162,7 +162,9 @@ export async function loadAlphaScan(
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           logStartupDebug(`session SKU failed; falling back to per-request: ${message}`);
-          console.warn(`[scan] Amarok session mint failed; falling back to per-request: ${message}`);
+          console.warn(
+            `[scan] Amarok session mint failed; falling back to per-request: ${message}`,
+          );
         }
       } else {
         logStartupDebug(
