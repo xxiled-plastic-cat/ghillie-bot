@@ -4,7 +4,7 @@ Formerly **Nuckelavee**. Alpha Arcade **user-agent**: walleted trading bot that 
 
 Hard boundary: Amarok never holds keys, never signs payments, and never submits orders (`executionSubmitted: false`). This bot owns x402 USDC micropayments, custody, cancel/claim/merge/split venue ops, fills, inventory, and the live loop.
 
-**Operators:** start with [QUICKSTART.md](./QUICKSTART.md) (clone → `.env` → zs-proxy → dry-run tick → cron / Telegram / costs). Do not begin with live cron or `docker compose up`.
+**Operators:** start with [QUICKSTART.md](./QUICKSTART.md) (clone → `.env` → zs-proxy → dry-run tick → cron / Telegram / costs). Inventory-exit asks and the `ALPHA_MAX_INVENTORY_NOTIONAL_USD` governor are documented there ([§10](./QUICKSTART.md#10-inventory-exits-and-the-risk-governor)) — do not begin with live cron or `docker compose up`.
 
 ## Contributing
 
@@ -202,7 +202,7 @@ App Platform sets `PORT` for readiness probes (cron health on `/health` / `/heal
 ```
 live / scan tick
   → Amarok MCP (amarok_get_scan / opportunities / quotes) with x402 paymentSignature
-  → quoteEngine prefers Amarok suggested quotes (local book fallback per missing leg) + risk / inventory
+  → quoteEngine prefers Amarok suggested **entry** quotes (local book fallback per missing leg); inventory-exit asks are always local + risk / inventory governor
   → place: amarok_get_execution_quote → sign unsignedTxnsBase64 → algod sendRawTransaction
   → cancel / claim / merge / split / wallet orders: @alpha-arcade/sdk (venue ops Amarok does not expose yet)
 ```
@@ -213,9 +213,10 @@ Integration code lives under `src/integrations/amarok/` (MCP client + x402 payme
 
 ## Operator notes
 
-See [QUICKSTART.md](./QUICKSTART.md) for leftover env cleanup (`POLY_*` / Div3rsaFi / `DATABASE_URL`; keep `ALPHA_API_KEY` for wallet-order sync).
+See [QUICKSTART.md](./QUICKSTART.md) for leftover env cleanup (`POLY_*` / Div3rsaFi / `DATABASE_URL`; keep `ALPHA_API_KEY` for wallet-order sync) and for **inventory exits / risk governor** (when exits fire, which lanes, fail-closed entries vs place-anyway exits, env knobs).
 - Use a dedicated hot wallet with USDC for x402 + trading collateral and ALGO for fees (and zs-proxy prepaid ticket / MBR).
 - The mnemonic is never sent to Amarok, Telegram, logs, or the model; import the same mnemonic into zs-proxy for inference.
+- Canonical sources: [`src/alpha/quoteEngine.ts`](./src/alpha/quoteEngine.ts) (local exits), [`src/alpha/liveTrader.ts`](./src/alpha/liveTrader.ts) (governor + place path), [`src/alpha/alphaRiskManager.ts`](./src/alpha/alphaRiskManager.ts), [`src/alpha/planReview/prompt.ts`](./src/alpha/planReview/prompt.ts) (entry review only).
 
 ## Roadmap
 
